@@ -1,5 +1,6 @@
 # ignore the following directories
 faces/
 myenv/
+.env
 .DS_Store
 .vscode/

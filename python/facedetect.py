@@ -1,5 +1,5 @@
 import os
-# from line_bot import send_face_recognition_result  # 先ほど作成した関数をインポート
+from dotenv import load_dotenv
 import cv2
 import numpy as np
 import face_recognition  # 顔認証用ライブラリ
@@ -12,14 +12,30 @@ from PIL import Image, ImageTk
 import queue  # キューのインポート
 from datetime import datetime
 import requests
+import logging
+from logging import getLogger, config
+from logging_handlers import TkinterHandler
+import json
 
+
+# -----------------------------------------------------------------------------
 # Haar Cascades（顔検出用）を読み込み
 face_cascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
 if face_cascade.empty():
     raise IOError("Haar Cascades ファイルが見つかりません。正しいパスを確認してください。")
 
+# 環境変数の読み込み
+load_dotenv()
+
+class Config:
+    WS_URL = os.getenv("WS_URL", "ws://localhost:8080")
+    LINE_NOTIFY_TOKEN = os.getenv("LINE_NOTIFY_TOKEN", "your_token_here")
+    FACES_DIR = os.getenv("FACES_DIR", "./faces")
+    FACE_MATCH_THRESHOLD = float(os.getenv("FACE_MATCH_THRESHOLD", 0.5))
+
+
 # WebSocketのURL（ESP32-CAMのIPアドレスに合わせて変更）
-ws_url = "ws://IP_ADDR:80/stream"
+ws_url = Config.WS_URL
 latest_frame = None
 frame_lock = threading.Lock()
 
@@ -29,16 +45,13 @@ current_fps = 0
 
 #LINE Notifyのトークン
 
-LINE_NOTIFY_TOKEN = 'NOTIFY_TOKEN'
-NOTIFICATION_THRESHOLD = 5
-
 detected_counts = {}
 notified_names = set()
 
 def send_line_notify(message):
     url = "https://notify-api.line.me/api/notify"
     headers = {
-        "Authorization": f"Bearer {LINE_NOTIFY_TOKEN}",
+        "Authorization": f"Bearer {Config.LINE_NOTIFY_TOKEN}",
         "Content-Type": "application/x-www-form-urlencoded"
     }
     payload = {
@@ -47,11 +60,11 @@ def send_line_notify(message):
     try:
         response = requests.post(url, headers=headers, data=payload)
         if response.status_code != 200:
-            print(f"Failed to send LINE Notify: {response.status_code}")
+            logger.error(f"LINE Notifyの送信に失敗しました: {response.status_code}")
         else:
-            print("LINE Notify sent successfully.")
+            logger.info("LINE Notify sent successfully.")
     except Exception as e:
-        print(f"Erorr occurred: {e}")
+        logger.error(f"LINE Notifyの送信中にエラーが発生しました: {e}")
 
 
 # -----------------------------------------------------------------------------
@@ -78,7 +91,7 @@ is_running = True  # プロセスの状態管理
 current_fps_setting = "10"  # デフォルトFPS
 current_resolution = "240x176"  # デフォルト解像度
 
-# 追加: ウィンドウサイズを記憶する変数
+# ウィンドウサイズを記憶する変数
 video_canvas_width = 800
 video_canvas_height = 600
 
@@ -123,7 +136,8 @@ class WebSocketClient:
 
     def connect(self):
         if self.ws and self.ws.keep_running:
-            log_message("既にWebSocketクライアントが接続されています。")
+            # log_message("既にWebSocketクライアントが接続されています。")
+            logger.info("既にWebSocketクライアントが接続されています。")
             return
         self.ws = websocket.WebSocketApp(
             self.url,
@@ -135,17 +149,21 @@ class WebSocketClient:
         self.thread = threading.Thread(target=self.ws.run_forever)
         self.thread.daemon = True
         self.thread.start()
-        log_message("WebSocketクライアントを接続しました。")
+        # log_message("WebSocketクライアントを接続しました。")
+        logger.info("WebSocketクライアントを接続しました。")
 
     def send(self, message):
         if self.ws and self.ws.sock and self.ws.sock.connected:
             try:
                 self.ws.send(message)
-                log_message(f"WebSocketにメッセージを送信: {message}")
+                # log_message(f"WebSocketにメッセージを送信: {message}")
+                logger.debug(f"WebSocketにメッセージを送信: {message}")
             except Exception as e:
-                log_message(f"WebSocket送信エラー: {e}")
+                # log_message(f"WebSocket送信エラー: {e}")
+                logger.error(f"WebSocket送信エラー: {e}")
         else:
-            log_message("WebSocketが接続されていません。再接続を試みます。")
+            # log_message("WebSocketが接続されていません。再接続を試みます。")
+            logger.warning("WebSocketが接続されていません。再接続を試みます。")
             self.connect()
             time.sleep(1)  # 再接続の待機
             self.send(message)
@@ -153,16 +171,19 @@ class WebSocketClient:
     def close(self):
         if self.ws:
             self.ws.close()
-            log_message("WebSocketクライアントを閉じました。")
+            # log_message("WebSocketクライアントを閉じました。")
+            logger.info("WebSocketクライアントを閉じました。")
         self.stop_event.set()
         if self.thread:
             self.thread.join()
-            log_message("WebSocketスレッドを終了しました。")
+            # log_message("WebSocketスレッドを終了しました。")
+            logger.info("WebSocketスレッドを終了しました。")
 
     def run(self):
         while not self.stop_event.is_set():
             if not (self.ws and self.ws.sock and self.ws.sock.connected):
-                log_message("WebSocketが切断されました。再接続を試みます...")
+                # log_message("WebSocketが切断されました。再接続を試みます...")
+                logger.warning("WebSocketが切断されました。再接続を試みます...")
                 self.connect()
             time.sleep(5)
 
@@ -259,6 +280,23 @@ def setup_gui():
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     log_text['yscrollcommand'] = scrollbar.set
 
+    with open('log_config.json', 'r') as f:
+        log_config = json.load(f)
+
+    # カスタムハンドラに必要な引数を渡す
+    log_config['handlers']['tkinterHandler']['text_widget'] = log_text
+    log_config['handlers']['tkinterHandler']['log_queue'] = log_queue
+
+    # ログ設定の適用
+    logging.config.dictConfig(log_config)
+
+    # ロガーの取得
+    global logger
+    logger = getLogger(__name__)
+
+    logger.setLevel(logging.INFO)
+    logger.info("プロセスを開始します。")
+
     # FPS表示の更新
     root.after(100, process_queues)  # 変更: process_queuesを定期的に呼び出す
 
@@ -288,18 +326,23 @@ def on_message(ws_app, message):
             recognize_faces(frame)
     elif isinstance(message, str):
         if message.startswith("from_esp32:"):
-            log_message(message)
+            # log_message(message)
+            logger.info(message)
     else:
-        log_message(f"Unknown message type: {type(message)}")
+        # log_message(f"Unknown message type: {type(message)}")
+        logger.warning(f"Unknown message type: {type(message)}")
 
 def on_error(ws_app, error):
-    log_message(f"WebSocketエラー: {error}")
+    # log_message(f"WebSocketエラー: {error}")
+    logger.error(f"WebSocketエラー: {error}")
 
 def on_close(ws_app, close_status_code, close_msg):
-    log_message("WebSocket接続が切断されました。再接続を試みます。")
+    # log_message("WebSocket接続が切断されました。再接続を試みます。")
+    logger.warning("WebSocket接続が切断されました。再接続を試みます。")
 
 def on_open(ws_app):
-    log_message("WebSocketに接続しました。")
+    # log_message("WebSocketに接続しました。")
+    logger.info("WebSocketに接続しました。")
 
 # -----------------------------------------------------------------------------
 # 4. WebSocketの設定とスレッド管理
@@ -320,9 +363,11 @@ def start_websocket():
             )
             websocket_client.connect()
             threading.Thread(target=websocket_client.run, daemon=True).start()
-            log_message("WebSocketクライアントを開始しました。")
+            # log_message("WebSocketクライアントを開始しました。")
+            logger.info("WebSocketクライアントを開始しました。")
         else:
-            log_message("WebSocketクライアントは既に起動しています。")
+            # log_message("WebSocketクライアントは既に起動しています。")
+            logger.info("WebSocketクライアントは既に起動しています。")
 
 # -----------------------------------------------------------------------------
 # 5. コマンド送信関数
@@ -331,7 +376,8 @@ def send_command(command):
     if websocket_client:
         websocket_client.send(command)
     else:
-        log_message("WebSocketクライアントが初期化されていません。")
+        # log_message("WebSocketクライアントが初期化されていません。")
+        logger.error("WebSocketクライアントが初期化されていません。")
 
 # -----------------------------------------------------------------------------
 # 6. プロセス開始/停止関数
@@ -340,7 +386,8 @@ def start_process():
     global is_running
     if not is_running:
         is_running = True
-        log_message("プロセスを開始します。")
+        # log_message("プロセスを開始します。")
+        logger.info("プロセスを開始します。")
         start_websocket()  # WebSocketClientを開始
         send_command("start_stream")  # ESP32にストリーミング開始コマンドを送信
         # 画像更新をスケジュール
@@ -354,7 +401,8 @@ def stop_process():
     global websocket_client
     if is_running:
         is_running = False
-        log_message("プロセスを停止します。")
+        # log_message("プロセスを停止します。")
+        logger.info("プロセスを停止します。")
         send_command("stop_stream")  # ESP32にストリーミング停止コマンドを送信
         # WebSocketクライアントを閉じる
         if websocket_client:
@@ -365,33 +413,31 @@ def stop_process():
         stop_button.config(state='disabled')
 
 # -----------------------------------------------------------------------------
-# 7. ログ表示関数
-
-def log_message(message):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    log_queue.put(f"{timestamp} - {message}\n")
+# 7. キューの管理(メインスレッドでやらないとSIGSEVするやつら)
 
 def process_queues():
     while not log_queue.empty():
-        message = log_queue.get()
-        log_text.config(state='normal')
-        log_text.insert(tk.END, message)
-        log_text.see(tk.END)
-        log_text.config(state='disabled')
+        log_entry = log_queue.get()
+        log_text.config(state=tk.NORMAL)
+        log_text.insert(tk.END, log_entry + "\n")
+        log_text.yview(tk.END)  # スクロールを最新の行に移動
+        log_text.config(state=tk.DISABLED)
     while not fps_queue.empty():
         fps = fps_queue.get()
         if fps_label:
             fps_label.config(text=f"現在のFPS: {fps:.2f}")
+
     root.after(100, process_queues)  # 100ミリ秒ごとにチェック
 
 # -----------------------------------------------------------------------------
 # 8. 顔認証用の既知顔データのロード
 
 def load_known_faces():
-    faces_dir = "./faces/"
+    faces_dir = Config.FACES_DIR
     if not os.path.exists(faces_dir):
         os.makedirs(faces_dir)
-        log_message(f"ディレクトリ {faces_dir} を作成しました。")
+        # log_message(f"ディレクトリ {faces_dir} を作成しました。")
+        logger.info(f"ディレクトリ {faces_dir} を作成しました。")
 
     for filename in os.listdir(faces_dir):
         if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
@@ -406,14 +452,19 @@ def load_known_faces():
                 if encodings:
                     known_face_encodings.append(encodings[0])
                     known_face_names.append(name)
-                    log_message(f"ロード成功: {name} ({filename})")
+                    # log_message(f"ロード成功: {name} ({filename})")
+                    logger.debug(f"ロード成功: {name} ({filename})")
                 else:
-                    log_message(f"顔が検出されませんでした: {filename}")
+                    # log_message(f"顔が検出されませんでした: {filename}")
+                    logger.debug(f"顔が検出されませんでした: {filename}")
             except Exception as e:
-                log_message(f"ファイルの処理中にエラーが発生しました: {filename} - {e}")
+                # log_message(f"ファイルの処理中にエラーが発生しました: {filename} - {e}")
+                logger.error(f"ファイルの処理中にエラーが発生しました: {filename} - {e}")
 
-    log_message(f"Loaded {len(known_face_encodings)} known faces.")
-    log_message(str(known_face_names))
+    # log_message(f"Loaded {len(known_face_encodings)} known faces.")
+    logger.info(f"Loaded {len(known_face_encodings)} known faces.")
+    # log_message(str(known_face_names))
+    logger.debug(str(known_face_names))
 
 # -----------------------------------------------------------------------------
 # 9. 画像更新関数
@@ -441,7 +492,8 @@ def update_image():
             root.image_label.imgtk = imgtk  # 保持するための参照
             root.image_label.configure(image=imgtk)
         except Exception as e:
-            log_message(f"画像更新中にエラー発生: {e}")
+            # log_message(f"画像更新中にエラー発生: {e}")
+            logger.debug(f"画像更新中にエラー発生: {e}")
 
     root.after(10, update_image)
 
@@ -451,7 +503,8 @@ def update_image():
 def set_fps(fps):
     global current_fps_setting
     current_fps_setting = fps
-    log_message(f"FPSを{fps}に設定しました。")
+    # log_message(f"FPSを{fps}に設定しました。")
+    logger.info(f"FPSを{fps}に設定しました。")
     send_command(f"SET_FPS:{fps}")
 
 # -----------------------------------------------------------------------------
@@ -460,7 +513,8 @@ def set_fps(fps):
 def set_resolution(resolution):
     global current_resolution
     current_resolution = resolution
-    log_message(f"解像度を{resolution}に設定しました。")
+    # log_message(f"解像度を{resolution}に設定しました。")
+    logger.info(f"解像度を{resolution}に設定しました。")
     send_command(f"SET_RESOLUTION:{resolution}")
 
 # -----------------------------------------------------------------------------
@@ -501,7 +555,7 @@ def preprocess_frame(frame):
     gamma_corrected = adjust_gamma(equalized, gamma=1.5)
     return gamma_corrected
 
-FACE_MATCH_THRESHOLD = 0.5  # 顔一致の閾値
+
 def recognize_faces(frame):
     global unknown_face_times
 
@@ -514,7 +568,7 @@ def recognize_faces(frame):
     face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
 
     for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=FACE_MATCH_THRESHOLD)
+        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=Config.FACE_MATCH_THRESHOLD)
         name = "Unknown"
 
         # 顔が一致するか確認
@@ -537,7 +591,8 @@ def recognize_faces(frame):
             cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 1)  # 赤枠に変更
             cv2.putText(frame, name, (left + 6, bottom + 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255), 1)  # 赤文字に変更
         else:
-            log_message(f"顔を検出しました: {name}")
+            # log_message(f"顔を検出しました: {name}")
+            logger.info(f"顔を検出しました: {name}")
             cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 1)
             cv2.putText(frame, name, (left + 6, bottom + 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 0), 1)  # 緑文字に変更
 
@@ -560,13 +615,15 @@ def save_unknown_face(frame, face_coords):
     # トリムを行わず、全体のフレームを保存
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"Unknown_{timestamp}.jpg"
-    filepath = os.path.join("./faces/", filename)
-    cv2.imwrite(filepath, frame)  # フレーム全体を保存
-    log_message(f"未知の顔を保存しました: {filename}")
+    path = os.path.join(Config.FACES_DIR, filename)
+    cv2.imwrite(path, frame)  # フレーム全体を保存
+    # log_message(f"未知の顔を保存しました: {filename}")
+    logger.info(f"未知の顔を保存しました: {filename}")
 
 
 def safe_exit():
-    log_message("終了します。")
+    # log_message("終了します。")
+    logger.info("終了します。")
     stop_process()  # プロセスを停止し、WebSocketを閉じる
     root.destroy()  # Tkinter GUIを閉じる
 
