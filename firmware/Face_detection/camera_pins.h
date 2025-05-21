@@ -17,6 +17,9 @@
 #define HREF_GPIO_NUM  47
 #define PCLK_GPIO_NUM  13
 
+// LED_GPIO_NUM の定義を削除
+// #define LED_GPIO_NUM   2  // Example LED pin for AI-Thinker, adjust for your board
+
 #else
 #error "Camera model not selected"
 #endif

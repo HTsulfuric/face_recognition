@@ -16,13 +16,14 @@ AsyncWebSocketClient* currentClient = nullptr;
 int current_fps = 5;
 unsigned long frame_interval_ms = 1000 / current_fps;
 
-#if defined(LED_GPIO_NUM)
-  #define LED_LEDC_TIMER LEDC_TIMER_0
-  #define LED_MAX_INTENSITY 255
-#endif
+// LED関連の定義と変数を削除
+// #if defined(LED_GPIO_NUM)
+//   #define LED_LEDC_TIMER LEDC_TIMER_0
+//   #define LED_MAX_INTENSITY 255
+// #endif
 
-int brightness = 0;
-bool led_on = false;
+// int brightness = 0;
+// bool led_on = false;
 
 bool isStreaming = false;
 
@@ -90,11 +91,12 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
             currentClient = client;
 
             isStreaming = true;
-            #if defined(LED_GPIO_NUM)
-                ledcWrite(LED_GPIO_NUM, LED_MAX_INTENSITY);
-                delay(100);
-                ledcWrite(LED_GPIO_NUM, 0);
-            #endif
+            // LED関連のコードを削除
+            // #if defined(LED_GPIO_NUM)
+            //     ledcWrite(LED_GPIO_NUM, LED_MAX_INTENSITY);
+            //     delay(100);
+            //     ledcWrite(LED_GPIO_NUM, 0);
+            // #endif
             // ここで接続通知を送信
             if (client->canSend()) {
                 client->text("from_esp32: client connected");
@@ -107,9 +109,10 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
                 currentClient = nullptr;
                 isStreaming = false;
             }
-            #if defined(LED_GPIO_NUM)
-                ledcWrite(LED_GPIO_NUM, 0);
-            #endif
+            // LED関連のコードを削除
+            // #if defined(LED_GPIO_NUM)
+            //     ledcWrite(LED_GPIO_NUM, 0);
+            // #endif
             break;
 
         case WS_EVT_DATA: {
