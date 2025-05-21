@@ -86,8 +86,9 @@ start_button = None
 stop_button = None
 log_text = None
 fps_label = None
+connection_status_label = None # 追加: 接続ステータスラベル
 
-is_running = True  # プロセスの状態管理
+is_running = False  # プロセスの状態管理をFalseで初期化
 current_fps_setting = "1"  # デフォルトFPSをESP32側の初期値に合わせる
 current_resolution = "160x120"  # デフォルト解像度をESP32側の初期値に合わせる
 
@@ -136,7 +137,6 @@ class WebSocketClient:
 
     def connect(self):
         if self.ws and self.ws.keep_running:
-            # log_message("既にWebSocketクライアントが接続されています。")
             logger.info("既にWebSocketクライアントが接続されています。")
             return
         self.ws = websocket.WebSocketApp(
@@ -149,20 +149,16 @@ class WebSocketClient:
         self.thread = threading.Thread(target=self.ws.run_forever)
         self.thread.daemon = True
         self.thread.start()
-        # log_message("WebSocketクライアントを接続しました。")
         logger.info("WebSocketクライアントを接続しました。")
 
     def send(self, message):
         if self.ws and self.ws.sock and self.ws.sock.connected:
             try:
                 self.ws.send(message)
-                # log_message(f"WebSocketにメッセージを送信: {message}")
                 logger.debug(f"WebSocketにメッセージを送信: {message}")
             except Exception as e:
-                # log_message(f"WebSocket送信エラー: {e}")
                 logger.error(f"WebSocket送信エラー: {e}")
         else:
-            # log_message("WebSocketが接続されていません。再接続を試みます。")
             logger.warning("WebSocketが接続されていません。再接続を試みます。")
             self.connect()
             time.sleep(1)  # 再接続の待機
@@ -171,18 +167,15 @@ class WebSocketClient:
     def close(self):
         if self.ws:
             self.ws.close()
-            # log_message("WebSocketクライアントを閉じました。")
             logger.info("WebSocketクライアントを閉じました。")
         self.stop_event.set()
         if self.thread:
             self.thread.join()
-            # log_message("WebSocketスレッドを終了しました。")
             logger.info("WebSocketスレッドを終了しました。")
 
     def run(self):
         while not self.stop_event.is_set():
             if not (self.ws and self.ws.sock and self.ws.sock.connected):
-                # log_message("WebSocketが切断されました。再接続を試みます...")
                 logger.warning("WebSocketが切断されました。再接続を試みます...")
                 self.connect()
             time.sleep(5)
@@ -191,7 +184,7 @@ class WebSocketClient:
 # 2. GUIの設定とボタンの追加
 
 def setup_gui():
-    global root, start_button, stop_button, log_text, fps_label, image_label
+    global root, start_button, stop_button, log_text, fps_label, image_label, connection_status_label
     root = tk.Tk()
     root.title("ESP32-CAM 顔認証デモ")
     # ウィンドウサイズと初期位置（スクリーン中央に配置）
@@ -317,8 +310,7 @@ def setup_gui():
     root.after(100, process_queues)
 
     # 初期ボタン状態の設定
-    start_button.config(state='normal')
-    stop_button.config(state='disabled')
+    update_button_states()
 
 
 # -----------------------------------------------------------------------------
@@ -366,12 +358,24 @@ def on_message(ws_app, message):
 
 def on_error(ws_app, error):
     logger.error(f"WebSocketエラー: {error}")
+    # エラー発生時もボタンの状態を更新
+    root.after(0, update_button_states)
+    root.after(0, lambda: connection_status_label.config(text="接続状態: エラー", fg="red"))
+
 
 def on_close(ws_app, close_status_code, close_msg):
     logger.warning("WebSocket接続が切断されました。再接続を試みます。")
+    # 接続切断時もボタンの状態を更新
+    root.after(0, update_button_states)
+    root.after(0, lambda: connection_status_label.config(text="接続状態: 切断", fg="orange"))
+
 
 def on_open(ws_app):
     logger.info("WebSocketに接続しました。")
+    # 接続成功時もボタンの状態を更新
+    root.after(0, update_button_states)
+    root.after(0, lambda: connection_status_label.config(text="接続状態: 接続済み", fg="green"))
+
 
 # -----------------------------------------------------------------------------
 # 4. WebSocketの設定とスレッド管理
@@ -413,13 +417,14 @@ def start_process():
     if not is_running:
         is_running = True
         logger.info("プロセスを開始します。")
+        update_button_states() # ボタンの状態をすぐに更新
         start_websocket()  # WebSocketClientを開始
         send_command("start_stream")  # ESP32にストリーミング開始コマンドを送信
         # 画像更新をスケジュール
         update_image()
-        # ボタンの状態を更新
-        start_button.config(state='disabled')
-        stop_button.config(state='normal')
+    else:
+        logger.info("既にプロセスが実行中です。")
+
 
 def stop_process():
     global is_running
@@ -427,12 +432,22 @@ def stop_process():
     if is_running:
         is_running = False
         logger.info("プロセスを停止します。")
+        update_button_states() # ボタンの状態をすぐに更新
         send_command("stop_stream")  # ESP32にストリーミング停止コマンドを送信
         # WebSocketクライアントを閉じる
         if websocket_client:
             websocket_client.close()
             websocket_client = None
-        # ボタンの状態を更新
+    else:
+        logger.info("プロセスは既に停止しています。")
+
+# -----------------------------------------------------------------------------
+# ボタンの状態を更新する関数
+def update_button_states():
+    if is_running:
+        start_button.config(state='disabled')
+        stop_button.config(state='normal')
+    else:
         start_button.config(state='normal')
         stop_button.config(state='disabled')
 
@@ -659,8 +674,8 @@ def safe_exit():
 def start():
     setup_gui()
     load_known_faces()
-    start_websocket()      # WebSocket接続を開始
-    update_image()         # 画像更新処理を開始
+    # WebSocket接続はstart_process()内で開始
+    # update_image() はstart_process()内で開始
     root.mainloop()
 
 if __name__ == "__main__":
