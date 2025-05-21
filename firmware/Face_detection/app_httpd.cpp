@@ -52,10 +52,6 @@ void set_resolution(const String &res) {
             s->set_framesize(s, FRAMESIZE_240X240); // 240x240
             Serial.println("解像度を 240x240 に設定しました。");
         }
-        else if (current_resolution == "320x240") {
-            s->set_framesize(s, FRAMESIZE_QVGA); // 320x240
-            Serial.println("解像度を 320x240 に設定しました。");
-        }
         else {
             Serial.println("未対応の解像度が指定されました。");
         }
@@ -190,9 +186,10 @@ void streamTask(void * parameter){
                     continue;
                 }
 
-                // PIXFORMAT_JPEG または PIXFORMAT_GRAYSCALE の場合でも送信
-                // グレースケールの場合もバイナリデータとして送信
-                currentClient->binary(fb->buf, fb->len);
+                // JPEG形式の場合のみ送信
+                if(fb->format == PIXFORMAT_JPEG){
+                    currentClient->binary(fb->buf, fb->len);
+                }
                 
                 esp_camera_fb_return(fb);
             }
