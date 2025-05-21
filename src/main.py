@@ -16,7 +16,6 @@ import logging
 from logging import getLogger, config
 from logging_handlers import TkinterHandler
 import json
-import psutil # 追加: Wi-Fi情報を取得するため
 
 
 # -----------------------------------------------------------------------------
@@ -185,7 +184,7 @@ class WebSocketClient:
 # 2. GUIの設定とボタンの追加
 
 def setup_gui():
-    global root, start_button, stop_button, log_text, fps_label, image_label, connection_status_label
+    global root, start_button, stop_button, log_text, fps_label, image_label
     root = tk.Tk()
     root.title("ESP32-CAM 顔認証デモ")
     # ウィンドウサイズと初期位置（スクリーン中央に配置）
@@ -223,11 +222,6 @@ def setup_gui():
     # FPS表示ラベル
     fps_label = ttk.Label(status_frame, text="現在のFPS: 0.00", font=("Helvetica", 12))
     fps_label.pack(anchor=tk.W, pady=2)
-
-    # Wi-Fi名表示
-    connection_status_label = ttk.Label(status_frame, text="Wi-Fi: 取得中...", font=("Helvetica", 12))
-    connection_status_label.pack(anchor=tk.W, pady=2)
-
 
     # 操作ボタンフレーム
     action_buttons_frame = ttk.LabelFrame(control_panel_frame, text="操作", padding="10")
@@ -309,8 +303,6 @@ def setup_gui():
 
     # FPS表示の更新
     root.after(100, process_queues)
-    # Wi-Fiステータスの更新をスケジュール
-    root.after(1000, update_wifi_status) # 1秒ごとに更新
 
     # 初期ボタン状態の設定
     update_button_states()
@@ -379,21 +371,18 @@ def on_error(ws_app, error):
     logger.error(f"WebSocketエラー: {error}")
     # エラー発生時もボタンの状態を更新
     root.after(0, update_button_states)
-    # root.after(0, lambda: connection_status_label.config(text="接続状態: エラー", fg="red")) # 削除
 
 
 def on_close(ws_app, close_status_code, close_msg):
     logger.warning("WebSocket接続が切断されました。再接続を試みます。")
     # 接続切断時もボタンの状態を更新
     root.after(0, update_button_states)
-    # root.after(0, lambda: connection_status_label.config(text="接続状態: 切断", fg="orange")) # 削除
 
 
 def on_open(ws_app):
     logger.info("WebSocketに接続しました。")
     # 接続成功時もボタンの状態を更新
     root.after(0, update_button_states)
-    # root.after(0, lambda: connection_status_label.config(text="接続状態: 接続済み", fg="green")) # 削除
 
 
 # -----------------------------------------------------------------------------
@@ -709,57 +698,7 @@ def safe_exit():
     root.destroy()  # Tkinter GUIを閉じる
 
 # -----------------------------------------------------------------------------
-# 12. Wi-Fi名取得と表示の関数
-
-def get_wifi_name():
-    """現在接続しているWi-Fiの名前を取得する"""
-    try:
-        for interface, addrs in psutil.net_if_addrs().items():
-            # Windowsの場合
-            if os.name == 'nt':
-                import subprocess
-                try:
-                    output = subprocess.check_output(['netsh', 'wlan', 'show', 'interfaces'], encoding='shift_jis')
-                    for line in output.split('\n'):
-                        if 'SSID' in line and 'BSSID' not in line:
-                            ssid = line.split(':')[1].strip()
-                            if ssid != '非表示': # 非表示のSSIDは除外
-                                return ssid
-                except Exception as e:
-                    logger.debug(f"Windows Wi-Fi取得エラー: {e}")
-                    return "取得失敗 (Win)"
-            # macOSの場合
-            elif os.uname().sysname == 'Darwin':
-                import subprocess
-                try:
-                    output = subprocess.check_output(['/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport', '-I']).decode('utf-8')
-                    for line in output.split('\n'):
-                        if 'SSID' in line:
-                            return line.split(':')[1].strip()
-                except Exception as e:
-                    logger.debug(f"macOS Wi-Fi取得エラー: {e}")
-                    return "取得失敗 (macOS)"
-            # Linuxの場合 (nmcliを使用)
-            elif os.name == 'posix':
-                import subprocess
-                try:
-                    output = subprocess.check_output(['nmcli', '-t', '-f', 'ACTIVE,SSID', 'dev', 'wifi']).decode('utf-8')
-                    for line in output.split('\n'):
-                        if line.startswith('yes:'):
-                            return line.split(':')[1].strip()
-                except Exception as e:
-                    logger.debug(f"Linux Wi-Fi取得エラー: {e}")
-                    return "取得失敗 (Linux)"
-        return "Wi-Fiに未接続"
-    except Exception as e:
-        logger.error(f"Wi-Fi名取得中に予期せぬエラー: {e}")
-        return "取得エラー"
-
-def update_wifi_status():
-    """Wi-Fi名をGUIに表示する"""
-    wifi_name = get_wifi_name()
-    connection_status_label.config(text=f"Wi-Fi: {wifi_name}")
-    root.after(5000, update_wifi_status) # 5秒ごとに更新
+# 12. Wi-Fi名取得と表示の関数 (削除)
 
 # -----------------------------------------------------------------------------
 # 13. メイン処理
