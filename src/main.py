@@ -434,10 +434,6 @@ def stop_process():
         logger.info("プロセスを停止します。")
         update_button_states() # ボタンの状態をすぐに更新
         send_command("stop_stream")  # ESP32にストリーミング停止コマンドを送信
-        # WebSocketクライアントを閉じる処理はここでは行わない
-        # if websocket_client:
-        #     websocket_client.close()
-        #     websocket_client = None
     else:
         logger.info("プロセスは既に停止しています。")
 
