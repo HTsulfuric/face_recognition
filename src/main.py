@@ -478,6 +478,11 @@ def load_known_faces():
         logger.info(f"ディレクトリ {faces_dir} を作成しました。")
 
     for filename in os.listdir(faces_dir):
+        # "Unknown_" で始まるファイルはスキップする
+        if filename.lower().startswith("unknown_"):
+            logger.info(f"既知の顔として 'Unknown_' で始まるファイル '{filename}' をスキップしました。")
+            continue
+
         if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
             # ファイル名から名前を抽出（例: name_hogehoge.jpg -> name）
             name_part = filename.split('_')[0]
