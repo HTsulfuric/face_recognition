@@ -312,11 +312,14 @@ def on_message(ws_app, message):
         np_arr = np.frombuffer(message, np.uint8)
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if frame is not None:
-            # グレースケールに変換（顔認識のために必要）
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            
+            # 顔認識処理と描画
+            processed_frame_with_faces = recognize_faces_and_draw(frame.copy()) # 描画済みのカラーフレームを取得
+
             with frame_lock:
-                latest_frame = frame
+                latest_frame = processed_frame_with_faces # 描画済みのカラーフレームをlatest_frameに設定
+            
             frame_count += 1
             elapsed_time = time.time() - start_time
             if elapsed_time >= 1.0:
@@ -325,8 +328,6 @@ def on_message(ws_app, message):
                 start_time = time.time()
                 fps_queue.put(current_fps)  # 追加: FPSをfps_queueに送信
 
-            # 顔認識処理
-            recognize_faces(frame)
     elif isinstance(message, str):
         if message.startswith("from_esp32:"):
             # log_message(message)
@@ -487,8 +488,7 @@ def update_image():
             new_h = int(h * scale)
             resized_frame = cv2.resize(frame, (new_w, new_h))
 
-            # グレースケール画像をRGBに変換して表示
-            # TkinterのPhotoImageは3チャンネル画像を期待するため、グレースケールをRGBに変換
+            # latest_frameは既にカラー画像なので、そのままImage.fromarrayに渡す
             rgb_frame = Image.fromarray(resized_frame).convert('RGB')
             imgtk = ImageTk.PhotoImage(image=rgb_frame)
 
@@ -565,20 +565,22 @@ def preprocess_frame(frame):
     return gamma_corrected
 
 
-def recognize_faces(frame):
+def recognize_faces_and_draw(frame_to_draw):
     global unknown_face_times
 
-    # preprocess_frameはグレースケール画像を返す
-    processed_frame = preprocess_frame(frame)
+    # 顔認識はグレースケールで行うため、フレームをグレースケールに変換
+    gray_frame = cv2.cvtColor(frame_to_draw, cv2.COLOR_BGR2GRAY)
+    
+    # 前処理を適用
+    processed_frame = preprocess_frame(gray_frame)
 
     current_detected_names = set()
 
     # face_recognitionはカラー画像を期待するため、グレースケールをBGRに変換
-    # processed_frameはグレースケールなので、3チャンネルに変換
     color_for_dlib = cv2.cvtColor(processed_frame, cv2.COLOR_GRAY2BGR)
 
-    face_locations = face_recognition.face_locations(color_for_dlib, model="cnn") # color_for_dlib を渡す
-    face_encodings = face_recognition.face_encodings(color_for_dlib, face_locations) # color_for_dlib を渡す
+    face_locations = face_recognition.face_locations(color_for_dlib, model="cnn")
+    face_encodings = face_recognition.face_encodings(color_for_dlib, face_locations)
 
     for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
         matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=Config.FACE_MATCH_THRESHOLD)
@@ -598,25 +600,18 @@ def recognize_faces(frame):
             # 1分以内に保存された未知の顔画像の数をカウント
             unknown_face_times = [t for t in unknown_face_times if t > current_time - 60]
             if len(unknown_face_times) < max_unknown_faces_per_minute:
-                save_unknown_face(frame, (top, right, bottom, left))
+                # 保存は元のカラーフレームのグレースケール版で行う
+                save_unknown_face(gray_frame, (top, right, bottom, left))
                 unknown_face_times.append(current_time)
 
-            # グレースケール画像に色付きの矩形やテキストを描画するには、
-            # まず画像をBGRに変換する必要がある
-            display_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR) if len(frame.shape) == 2 else frame
-            cv2.rectangle(display_frame, (left, top), (right, bottom), (0, 0, 255), 1)  # 赤枠に変更
-            cv2.putText(display_frame, name, (left + 6, bottom + 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255), 1)  # 赤文字に変更
-            # 元のframeではなく、display_frameを更新する必要があるが、
-            # ここで描画してもupdate_imageには反映されないため、
-            # 描画はupdate_imageの直前で行うか、latest_frameに描画結果を反映させる必要がある。
-            # 今回は、顔検出結果の描画は一旦省略し、表示のみを優先する。
+            # 描画は元のカラーフレームに行う
+            cv2.rectangle(frame_to_draw, (left, top), (right, bottom), (0, 0, 255), 1)  # 赤枠
+            cv2.putText(frame_to_draw, name, (left + 6, bottom + 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255), 1)  # 赤文字
         else:
-            # log_message(f"顔を検出しました: {name}")
             logger.info(f"顔を検出しました: {name}")
-            # 同様に、グレースケール画像に描画する場合は変換が必要
-            display_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR) if len(frame.shape) == 2 else frame
-            cv2.rectangle(display_frame, (left, top), (right, bottom), (0, 255, 0), 1)
-            cv2.putText(display_frame, name, (left + 6, bottom + 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 0), 1)  # 緑文字に変更
+            # 描画は元のカラーフレームに行う
+            cv2.rectangle(frame_to_draw, (left, top), (right, bottom), (0, 255, 0), 1) # 緑枠
+            cv2.putText(frame_to_draw, name, (left + 6, bottom + 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 0), 1)  # 緑文字
 
             if name in detected_counts:
                 detected_counts[name] += 1
@@ -632,6 +627,8 @@ def recognize_faces(frame):
     for name in detected_counts.keys():
         if name not in current_detected_names:
             detected_counts[name] = 0
+    
+    return frame_to_draw # 描画済みのカラーフレームを返す
 
 
 def save_unknown_face(frame, face_coords):
