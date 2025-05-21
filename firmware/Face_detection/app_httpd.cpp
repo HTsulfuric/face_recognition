@@ -3,7 +3,6 @@
 #include <esp_camera.h>
 
 // Uncomment the appropriate camera model
-//#define CAMERA_MODEL_AI_THINKER // Has PSRAM
 #define CAMERA_MODEL_XIAO_ESP32S3  // Has PSRAM
 
 #include "camera_pins.h"  // Ensure this header defines the camera pin configuration
