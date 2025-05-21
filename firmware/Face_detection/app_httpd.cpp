@@ -126,7 +126,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
       } else if (msg == "start_stream") {
         if (!isStreaming) {
           // カメラが停止している場合は再初期化
-          if (!esp_camera_is_connected()) {
+          if (esp_camera_sensor_get() == NULL) { // esp_camera_is_connected() の代わりにこれを使用
             Serial.println("カメラが停止しているため再初期化します。");
             if (!init_camera()) {
               Serial.println("カメラの再初期化に失敗しました。");
@@ -185,7 +185,7 @@ void streamTask(void *parameter) {
         if (!fb) {
           Serial.println("カメラフレームの取得に失敗しました");
           // カメラが停止している場合は、エラーメッセージを繰り返さないようにする
-          if (esp_camera_is_connected()) {
+          if (esp_camera_sensor_get() != NULL) { // esp_camera_is_connected() の代わりにこれを使用
             vTaskDelay(1000 / portTICK_PERIOD_MS); // エラー時の待機
           } else {
             vTaskDelay(100 / portTICK_PERIOD_MS); // カメラ停止中の短い待機
