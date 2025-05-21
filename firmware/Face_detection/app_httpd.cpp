@@ -9,6 +9,7 @@
 
 // init_camera関数を外部から呼び出せるように宣言
 extern bool init_camera();
+extern bool initialize_camera(); // initialize_cameraも外部から呼び出せるように宣言
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/stream");
@@ -43,6 +44,9 @@ void set_resolution(const String &res) {
     } else if (current_resolution == "240x240") {
       s->set_framesize(s, FRAMESIZE_240X240); // 240x240
       Serial.println("解像度を 240x240 に設定しました。");
+    } else if (current_resolution == "320x240") { // QVGAを追加
+      s->set_framesize(s, FRAMESIZE_QVGA); // 320x240
+      Serial.println("解像度を 320x240 に設定しました。");
     } else {
       Serial.println("未対応の解像度が指定されました。");
     }
@@ -90,6 +94,9 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
     // ここで接続通知を送信
     if (client->canSend()) {
       client->text("from_esp32: client connected");
+      // 現在のFPSと解像度を通知
+      client->text("current_fps:" + String(current_fps));
+      client->text("current_resolution:" + current_resolution);
     }
     break;
 
@@ -132,8 +139,8 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
         if (!isStreaming) {
           Serial.println("ストリーミング開始コマンドを受信しました。");
           if (esp_camera_sensor_get() == NULL) {
-            Serial.println("カメラが停止しているため再初期化します。");
-            if (!init_camera()) {
+            Serial.println("カメラが停止しているため再初期化を試みます。");
+            if (!initialize_camera()) { // initialize_camera() を呼び出す
               Serial.println("カメラの再初期化に失敗しました。");
               // エラー処理
               if (client->canSend()) {
@@ -215,7 +222,7 @@ void streamTask(void *parameter) {
           }
           // カメラが停止している場合は、エラーメッセージを繰り返さないようにする
           if (esp_camera_sensor_get() != NULL) { // カメラが初期化されている場合のみ待機
-            vTaskDelay(1000 / portTICK_PERIOD_MS); // エラー時の待機
+            vTaskDelay(100 / portTICK_PERIOD_MS); // エラー時の待機
           } else {
             vTaskDelay(100 / portTICK_PERIOD_MS); // カメラが初期化されていない場合の短い待機
           }

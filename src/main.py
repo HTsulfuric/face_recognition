@@ -272,7 +272,7 @@ def setup_gui():
         ("176x144 (QCIF)", "176x144"),
         ("240x176 (HQVGA)", "240x176"),
         ("240x240", "240x240"),
-        ("320x240 (QVGA)", "320x240"),
+        ("320x240 (QVGA)", "320x240"), # 追加
     ]
     for label, res_val in resolution_options:
         rb = ttk.Radiobutton(resolution_setting_frame, text=label, variable=resolution_var, value=res_val, command=lambda r=res_val: set_resolution(r))
@@ -353,6 +353,22 @@ def on_message(ws_app, message):
     elif isinstance(message, str):
         if message.startswith("from_esp32:"):
             logger.info(message)
+        elif message.startswith("current_fps:"):
+            try:
+                fps_val = message.split(":")[1].strip()
+                # GUIスレッドで更新するためにroot.afterを使用
+                root.after(0, lambda: fps_var.set(fps_val)) 
+                logger.info(f"ESP32からFPS設定を受信: {fps_val}")
+            except IndexError:
+                logger.warning(f"不正なFPSメッセージ形式: {message}")
+        elif message.startswith("current_resolution:"):
+            try:
+                res_val = message.split(":")[1].strip()
+                # GUIスレッドで更新するためにroot.afterを使用
+                root.after(0, lambda: resolution_var.set(res_val))
+                logger.info(f"ESP32から解像度設定を受信: {res_val}")
+            except IndexError:
+                logger.warning(f"不正な解像度メッセージ形式: {message}")
     else:
         logger.warning(f"Unknown message type: {type(message)}")
 
