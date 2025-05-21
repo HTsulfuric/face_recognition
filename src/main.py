@@ -527,11 +527,26 @@ def update_image():
 
     if frame is not None:
         try:
-            # ウィンドウ幅・高さに合わせてリサイズ（video_canvas_width / video_canvas_height）を利用
+            # image_labelの現在の幅と高さを取得
+            # ウィンドウがまだ描画されていない場合は0になるため、デフォルト値を使用
+            display_width = root.image_label.winfo_width()
+            display_height = root.image_label.winfo_height()
+
+            if display_width == 0: # 初期表示時など、まだ幅が確定していない場合
+                display_width = 800 # デフォルト値
+            if display_height == 0: # 初期表示時など、まだ高さが確定していない場合
+                display_height = 600 # デフォルト値
+
             h, w = frame.shape[:2]
-            scale = min(video_canvas_width / float(w), video_canvas_height / float(h))
+            
+            # アスペクト比を維持しつつ、表示領域に収まるようにリサイズ
+            scale_w = display_width / w
+            scale_h = display_height / h
+            scale = min(scale_w, scale_h)
+
             new_w = int(w * scale)
             new_h = int(h * scale)
+            
             resized_frame = cv2.resize(frame, (new_w, new_h))
 
             # OpenCVのBGR画像をPILのRGBに変換
