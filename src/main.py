@@ -87,7 +87,7 @@ start_button = None
 stop_button = None
 log_text = None
 fps_label = None
-connection_status_label = None # 変更: 接続ステータスラベルからWi-Fi名表示へ
+connection_status_label = None #Wi-Fi名表示
 
 is_running = False  # プロセスの状態管理をFalseで初期化
 current_fps_setting = "1"  # デフォルトFPSをESP32側の初期値に合わせる
@@ -224,7 +224,7 @@ def setup_gui():
     fps_label = ttk.Label(status_frame, text="現在のFPS: 0.00", font=("Helvetica", 12))
     fps_label.pack(anchor=tk.W, pady=2)
 
-    # 接続ステータスラベル（仮） -> Wi-Fi名表示に変更
+    # Wi-Fi名表示
     connection_status_label = ttk.Label(status_frame, text="Wi-Fi: 取得中...", font=("Helvetica", 12))
     connection_status_label.pack(anchor=tk.W, pady=2)
 
