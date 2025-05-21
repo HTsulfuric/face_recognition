@@ -125,7 +125,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
         set_resolution(res);
       } else if (msg == "start_stream") {
         if (!isStreaming) {
-          // カメラが停止している場合は再初期化
+          Serial.println("ストリーミング開始コマンドを受信しました。");
           if (esp_camera_sensor_get() == NULL) {
             Serial.println("カメラが停止しているため再初期化します。");
             if (!init_camera()) {
@@ -136,9 +136,13 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
               }
               return;
             }
+          } else {
+            Serial.println("カメラは既に初期化されています。");
           }
           isStreaming = true;
           Serial.println("ストリーミングを開始します");
+        } else {
+          Serial.println("既にストリーミング中です。");
         }
       } else if (msg == "stop_stream") {
         if (isStreaming) {
@@ -151,9 +155,12 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
           esp_camera_fb_return(fb);
           Serial.println("保持中のフレームバッファを解放しました。");
         }
-        // ストリーム停止時にカメラを停止
-        esp_camera_deinit();
-        Serial.println("ストリーム停止によりカメラを停止しました。");
+        esp_err_t deinit_err = esp_camera_deinit();
+        if (deinit_err == ESP_OK) {
+            Serial.println("ストリーム停止によりカメラを停止しました。");
+        } else {
+            Serial.printf("カメラの停止に失敗しました。エラーコード: 0x%x (%s)\n", deinit_err, esp_err_to_name(deinit_err));
+        }
       }
     }
     break;
