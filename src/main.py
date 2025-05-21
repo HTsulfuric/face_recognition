@@ -88,8 +88,8 @@ log_text = None
 fps_label = None
 
 is_running = True  # プロセスの状態管理
-current_fps_setting = "10"  # デフォルトFPS
-current_resolution = "240x176"  # デフォルト解像度
+current_fps_setting = "1"  # デフォルトFPSをESP32側の初期値に合わせる
+current_resolution = "160x120"  # デフォルト解像度をESP32側の初期値に合わせる
 
 # ウィンドウサイズを記憶する変数
 video_canvas_width = 800
@@ -207,30 +207,55 @@ def setup_gui():
     # リサイズイベントのバインド
     root.bind("<Configure>", on_resize)
 
-    # 上部フレーム（FPS表示とボタン類）
-    top_frame = ttk.Frame(root)
-    top_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
+    # メインフレーム（全体を囲む）
+    main_frame = ttk.Frame(root, padding="10 10 10 10")
+    main_frame.pack(fill=tk.BOTH, expand=True)
+
+    # 左側のコントロールパネルフレーム
+    control_panel_frame = ttk.Frame(main_frame, width=300)
+    control_panel_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+    control_panel_frame.pack_propagate(False) # フレームのサイズが内容によって変わらないようにする
+
+    # 右側の映像表示フレーム
+    video_display_frame = ttk.Frame(main_frame)
+    video_display_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+    # --- コントロールパネル内の要素 ---
+
+    # 状態表示フレーム
+    status_frame = ttk.LabelFrame(control_panel_frame, text="ステータス", padding="10")
+    status_frame.pack(fill=tk.X, pady=(0, 10))
 
     # FPS表示ラベル
-    global fps_label
-    fps_label = ttk.Label(top_frame, text="現在のFPS: 0")
-    fps_label.pack(side=tk.LEFT, padx=10)
+    fps_label = ttk.Label(status_frame, text="現在のFPS: 0.00", font=("Helvetica", 12))
+    fps_label.pack(anchor=tk.W, pady=2)
+
+    # 接続ステータスラベル（仮）
+    connection_status_label = ttk.Label(status_frame, text="接続状態: 未接続", font=("Helvetica", 12))
+    connection_status_label.pack(anchor=tk.W, pady=2)
+
+
+    # 操作ボタンフレーム
+    action_buttons_frame = ttk.LabelFrame(control_panel_frame, text="操作", padding="10")
+    action_buttons_frame.pack(fill=tk.X, pady=(0, 10))
 
     # プロセス開始ボタン
-    global start_button, stop_button
-    start_button = tk.Button(top_frame, text="開始", bg="green", command=start_process, width=10, state='disabled')
-    start_button.pack(side=tk.LEFT, padx=10)
-    stop_button = tk.Button(top_frame, text="停止", bg="red", command=stop_process, width=10)
-    stop_button.pack(side=tk.LEFT, padx=10)
+    start_button = tk.Button(action_buttons_frame, text="開始", bg="green", fg="white", command=start_process, width=15, height=2)
+    start_button.pack(fill=tk.X, pady=5)
+    # プロセス停止ボタン
+    stop_button = tk.Button(action_buttons_frame, text="停止", bg="red", fg="white", command=stop_process, width=15, height=2)
+    stop_button.pack(fill=tk.X, pady=5)
+    # 終了ボタン
+    exit_button = tk.Button(action_buttons_frame, text="終了", bg="grey", fg="white", command=safe_exit, width=15, height=2)
+    exit_button.pack(fill=tk.X, pady=5)
 
-    # Exitボタンの追加
-    exit_button = tk.Button(top_frame, text="終了", bg="grey", command=safe_exit, width=10)
-    exit_button.pack(side=tk.LEFT, padx=10)
+    # FPS設定フレーム
+    fps_setting_frame = ttk.LabelFrame(control_panel_frame, text="FPS設定", padding="10")
+    fps_setting_frame.pack(fill=tk.X, pady=(0, 10))
 
-    # FPS設定ボタンのフレーム
-    fps_frame = ttk.LabelFrame(top_frame, text="FPS設定")
-    fps_frame.pack(side=tk.LEFT, padx=20)
-
+    # FPS選択用のRadiobutton
+    global fps_var
+    fps_var = tk.StringVar(value=current_fps_setting) # 初期値を設定
     fps_options = [
         ("1 FPS", "1"),
         ("5 FPS", "5"),
@@ -238,67 +263,63 @@ def setup_gui():
         ("20 FPS", "20"),
         ("30 FPS", "30")
     ]
-
-    for label, fps in fps_options:
-        btn = ttk.Button(fps_frame, text=label, command=lambda f=fps: set_fps(f))
-        btn.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
+    for label, fps_val in fps_options:
+        rb = ttk.Radiobutton(fps_setting_frame, text=label, variable=fps_var, value=fps_val, command=lambda f=fps_val: set_fps(f))
+        rb.pack(anchor=tk.W, pady=2)
 
     # 解像度設定フレーム
-    resolution_change_frame = ttk.LabelFrame(top_frame, text="解像度設定")
-    resolution_change_frame.pack(side=tk.LEFT, padx=20)
+    resolution_setting_frame = ttk.LabelFrame(control_panel_frame, text="解像度設定", padding="10")
+    resolution_setting_frame.pack(fill=tk.X, pady=(0, 10))
 
+    # 解像度選択用のRadiobutton
+    global resolution_var
+    resolution_var = tk.StringVar(value=current_resolution) # 初期値を設定
     resolution_options = [
-        ("160x120", "160x120"),
-        ("176x144", "176x144"),
-        ("240x176", "240x176"),
+        ("160x120 (QQVGA)", "160x120"),
+        ("176x144 (QCIF)", "176x144"),
+        ("240x176 (HQVGA)", "240x176"),
         ("240x240", "240x240"),
-        ("320x240", "320x240"),
+        ("320x240 (QVGA)", "320x240"),
     ]
+    for label, res_val in resolution_options:
+        rb = ttk.Radiobutton(resolution_setting_frame, text=label, variable=resolution_var, value=res_val, command=lambda r=res_val: set_resolution(r))
+        rb.pack(anchor=tk.W, pady=2)
 
-    for label, res in resolution_options:
-        btn = ttk.Button(resolution_change_frame, text=label, command=lambda r=res: set_resolution(r))
-        btn.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
+    # ログ表示フレーム
+    log_frame = ttk.LabelFrame(control_panel_frame, text="ログ", padding="10")
+    log_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 0)) # ログエリアが残りのスペースを埋めるように
 
-    # 映像表示フレーム（中央部分を広く取る）
-    video_frame = ttk.Frame(root)
-    video_frame.pack(side=tk.TOP, expand=True, fill=tk.BOTH, padx=10, pady=5)
-
-    # 画像表示ラベル（中央フレームに配置）
-    image_label = ttk.Label(video_frame, text="No frame", background="black")
-    image_label.pack(expand=True, fill=tk.BOTH)
-    root.image_label = image_label  # 参照保持
-
-    # 下部フレーム（ログなど）
-    bottom_frame = ttk.Frame(root)
-    bottom_frame.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True, padx=10, pady=5)
-
-    # ログ表示（下部フレーム）
-    global log_text
-    log_text = tk.Text(bottom_frame, state='disabled', wrap='word')
+    log_text = tk.Text(log_frame, state='disabled', wrap='word', font=("Meiryo", 10)) # フォントサイズ調整
     log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    scrollbar = ttk.Scrollbar(bottom_frame, command=log_text.yview)
+    scrollbar = ttk.Scrollbar(log_frame, command=log_text.yview)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     log_text['yscrollcommand'] = scrollbar.set
 
+    # --- 映像表示フレーム内の要素 ---
+    image_label = ttk.Label(video_display_frame, text="No frame", background="black")
+    image_label.pack(expand=True, fill=tk.BOTH)
+    root.image_label = image_label  # 参照保持
+
+    # ログ設定の初期化
     with open('log_config.json', 'r', encoding='utf-8') as f:
         log_config = json.load(f)
 
-    # カスタムハンドラに必要な引数を渡す
     log_config['handlers']['tkinterHandler']['text_widget'] = log_text
     log_config['handlers']['tkinterHandler']['log_queue'] = log_queue
-
-    # ログ設定の適用
     logging.config.dictConfig(log_config)
 
-    # ロガーの取得
     global logger
     logger = getLogger(__name__)
-
     logger.setLevel(logging.INFO)
-    logger.info("プロセスを開始します。")
+    logger.info("GUIをセットアップしました。")
 
     # FPS表示の更新
-    root.after(100, process_queues)  # 変更: process_queuesを定期的に呼び出す
+    root.after(100, process_queues)
+
+    # 初期ボタン状態の設定
+    start_button.config(state='normal')
+    stop_button.config(state='disabled')
+
 
 # -----------------------------------------------------------------------------
 # 3. WebSocketのイベントハンドラ
@@ -390,7 +411,6 @@ def start_process():
     global is_running
     if not is_running:
         is_running = True
-        # log_message("プロセスを開始します。")
         logger.info("プロセスを開始します。")
         start_websocket()  # WebSocketClientを開始
         send_command("start_stream")  # ESP32にストリーミング開始コマンドを送信
@@ -405,7 +425,6 @@ def stop_process():
     global websocket_client
     if is_running:
         is_running = False
-        # log_message("プロセスを停止します。")
         logger.info("プロセスを停止します。")
         send_command("stop_stream")  # ESP32にストリーミング停止コマンドを送信
         # WebSocketクライアントを閉じる
@@ -440,7 +459,6 @@ def load_known_faces():
     faces_dir = Config.FACES_DIR
     if not os.path.exists(faces_dir):
         os.makedirs(faces_dir)
-        # log_message(f"ディレクトリ {faces_dir} を作成しました。")
         logger.info(f"ディレクトリ {faces_dir} を作成しました。")
 
     for filename in os.listdir(faces_dir):
@@ -456,18 +474,13 @@ def load_known_faces():
                 if encodings:
                     known_face_encodings.append(encodings[0])
                     known_face_names.append(name)
-                    # log_message(f"ロード成功: {name} ({filename})")
                     logger.debug(f"ロード成功: {name} ({filename})")
                 else:
-                    # log_message(f"顔が検出されませんでした: {filename}")
                     logger.debug(f"顔が検出されませんでした: {filename}")
             except Exception as e:
-                # log_message(f"ファイルの処理中にエラーが発生しました: {filename} - {e}")
                 logger.error(f"ファイルの処理中にエラーが発生しました: {filename} - {e}")
 
-    # log_message(f"Loaded {len(known_face_encodings)} known faces.")
     logger.info(f"Loaded {len(known_face_encodings)} known faces.")
-    # log_message(str(known_face_names))
     logger.debug(str(known_face_names))
 
 # -----------------------------------------------------------------------------
@@ -496,7 +509,6 @@ def update_image():
             root.image_label.imgtk = imgtk  # 保持するための参照
             root.image_label.configure(image=imgtk)
         except Exception as e:
-            # log_message(f"画像更新中にエラー発生: {e}")
             logger.debug(f"画像更新中にエラー発生: {e}")
 
     root.after(10, update_image)
@@ -507,7 +519,6 @@ def update_image():
 def set_fps(fps):
     global current_fps_setting
     current_fps_setting = fps
-    # log_message(f"FPSを{fps}に設定しました。")
     logger.info(f"FPSを{fps}に設定しました。")
     send_command(f"SET_FPS:{fps}")
 
@@ -517,7 +528,6 @@ def set_fps(fps):
 def set_resolution(resolution):
     global current_resolution
     current_resolution = resolution
-    # log_message(f"解像度を{resolution}に設定しました。")
     logger.info(f"解像度を{resolution}に設定しました。")
     send_command(f"SET_RESOLUTION:{resolution}")
 
@@ -643,7 +653,6 @@ def save_unknown_face(frame, face_coords):
 
 
 def safe_exit():
-    # log_message("終了します。")
     logger.info("終了します。")
     stop_process()  # プロセスを停止し、WebSocketを閉じる
     root.destroy()  # Tkinter GUIを閉じる
