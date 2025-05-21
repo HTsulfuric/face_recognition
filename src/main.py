@@ -20,7 +20,7 @@ import json
 
 # -----------------------------------------------------------------------------
 # Haar Cascades（顔検出用）を読み込み
-face_cascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
+face_cascade = cv2.CascadeClassifier("resources/models/haarcascade_frontalface_default.xml")
 if face_cascade.empty():
     raise IOError("Haar Cascades ファイルが見つかりません。正しいパスを確認してください。")
 
@@ -29,8 +29,8 @@ load_dotenv()
 
 class Config:
     WS_URL = os.getenv("WS_URL", "ws://localhost:8080")
-    LINE_NOTIFY_TOKEN = os.getenv("LINE_NOTIFY_TOKEN", "your_token_here")
-    FACES_DIR = os.getenv("FACES_DIR", "./faces")
+    LINE_NOTIFY_TOKEN = os.getenv("LINE_NOTIFY_TOKEN", "")
+    FACES_DIR = os.getenv("FACES_DIR", "./resources/faces")
     FACE_MATCH_THRESHOLD = float(os.getenv("FACE_MATCH_THRESHOLD", 0.5))
 
 
@@ -280,7 +280,7 @@ def setup_gui():
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     log_text['yscrollcommand'] = scrollbar.set
 
-    with open('log_config.json', 'r') as f:
+    with open('log_config.json', 'r', encoding='utf-8') as f:
         log_config = json.load(f)
 
     # カスタムハンドラに必要な引数を渡す
