@@ -579,7 +579,7 @@ def recognize_faces_and_draw(frame_to_draw):
     # face_recognitionはカラー画像を期待するため、グレースケールをBGRに変換
     color_for_dlib = cv2.cvtColor(processed_frame, cv2.COLOR_GRAY2BGR)
 
-    face_locations = face_recognition.face_locations(color_for_dlib, model="cnn")
+    face_locations = face_recognition.face_locations(color_for_dlib, model="hog")
     face_encodings = face_recognition.face_encodings(color_for_dlib, face_locations)
 
     for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
