@@ -85,7 +85,8 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
     }
     currentClient = client;
 
-    isStreaming = true;
+    // 接続時にストリーミングは開始しない。start_streamコマンドを待つ
+    // isStreaming = true; // この行を削除
     // ここで接続通知を送信
     if (client->canSend()) {
       client->text("from_esp32: client connected");
@@ -98,8 +99,12 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
       currentClient = nullptr;
       isStreaming = false;
       // クライアント切断時にカメラを停止
-      esp_camera_deinit();
-      Serial.println("クライアント切断によりカメラを停止しました。");
+      esp_err_t deinit_err = esp_camera_deinit();
+      if (deinit_err == ESP_OK) {
+          Serial.println("クライアント切断によりカメラを停止しました。");
+      } else {
+          Serial.printf("クライアント切断時のカメラ停止に失敗しました。エラーコード: 0x%x (%s)\n", deinit_err, esp_err_to_name(deinit_err));
+      }
     }
     break;
 
@@ -155,11 +160,23 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
           esp_camera_fb_return(fb);
           Serial.println("保持中のフレームバッファを解放しました。");
         }
-        esp_err_t deinit_err = esp_camera_deinit();
-        if (deinit_err == ESP_OK) {
-            Serial.println("ストリーム停止によりカメラを停止しました。");
-        } else {
-            Serial.printf("カメラの停止に失敗しました。エラーコード: 0x%x (%s)\n", deinit_err, esp_err_to_name(deinit_err));
+        // カメラのデアセンブルを試行（失敗したら再試行）
+        esp_err_t deinit_err = ESP_OK;
+        int retry_count = 0;
+        const int MAX_DEINIT_RETRIES = 3;
+        while (retry_count < MAX_DEINIT_RETRIES) {
+            deinit_err = esp_camera_deinit();
+            if (deinit_err == ESP_OK) {
+                Serial.println("ストリーム停止によりカメラを停止しました。");
+                break;
+            } else {
+                Serial.printf("カメラの停止に失敗しました。エラーコード: 0x%x (%s) - 再試行 %d/%d\n", deinit_err, esp_err_to_name(deinit_err), retry_count + 1, MAX_DEINIT_RETRIES);
+                vTaskDelay(100 / portTICK_PERIOD_MS); // 短い遅延
+                retry_count++;
+            }
+        }
+        if (deinit_err != ESP_OK) {
+            Serial.println("カメラの停止に複数回失敗しました。");
         }
       }
     }
@@ -193,14 +210,14 @@ void streamTask(void *parameter) {
         camera_fb_t *fb = esp_camera_fb_get();
         if (!fb) {
           if (!last_fb_get_failed) { // 連続エラーの場合は初回のみログ出力
-            Serial.println("カメラフレームの取得に失敗しました");
+            Serial.println("カメラフレームの取得に失敗しました (esp_camera_fb_get)");
             last_fb_get_failed = true;
           }
           // カメラが停止している場合は、エラーメッセージを繰り返さないようにする
-          if (esp_camera_sensor_get() != NULL) {
+          if (esp_camera_sensor_get() != NULL) { // カメラが初期化されている場合のみ待機
             vTaskDelay(1000 / portTICK_PERIOD_MS); // エラー時の待機
           } else {
-            vTaskDelay(100 / portTICK_PERIOD_MS); // カメラ停止中の短い待機
+            vTaskDelay(100 / portTICK_PERIOD_MS); // カメラが初期化されていない場合の短い待機
           }
           continue;
         }
