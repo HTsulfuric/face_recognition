@@ -308,10 +308,12 @@ def on_message(ws_app, message):
 
     if isinstance(message, bytes):
         # フレームをバイナリ (JPEG) で受信 → NumPy配列へ
-        # グレースケール画像としてデコード
+        # JPEGとしてデコードし、その後グレースケールに変換
         np_arr = np.frombuffer(message, np.uint8)
-        frame = cv2.imdecode(np_arr, cv2.IMREAD_GRAYSCALE) # IMREAD_COLOR から IMREAD_GRAYSCALE に変更
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR) # IMREAD_GRAYSCALE から IMREAD_COLOR に戻す
         if frame is not None:
+            # グレースケールに変換
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) # BGRからGRAYに変換
             frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
             with frame_lock:
                 latest_frame = frame
