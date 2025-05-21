@@ -126,7 +126,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
       } else if (msg == "start_stream") {
         if (!isStreaming) {
           // カメラが停止している場合は再初期化
-          if (esp_camera_sensor_get() == NULL) { // esp_camera_is_connected() の代わりにこれを使用
+          if (esp_camera_sensor_get() == NULL) {
             Serial.println("カメラが停止しているため再初期化します。");
             if (!init_camera()) {
               Serial.println("カメラの再初期化に失敗しました。");
@@ -174,6 +174,8 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 
 // ストリーム送信タスクの作成（スタックサイズを32768に設定）
 void streamTask(void *parameter) {
+  static bool last_fb_get_failed = false; // 前回のフレーム取得が失敗したかどうかのフラグ
+
   while (1) {
     if (isStreaming && currentClient != nullptr && currentClient->canSend()) {
       unsigned long current_time = millis();
@@ -183,15 +185,19 @@ void streamTask(void *parameter) {
         last_frame_time = current_time;
         camera_fb_t *fb = esp_camera_fb_get();
         if (!fb) {
-          Serial.println("カメラフレームの取得に失敗しました");
+          if (!last_fb_get_failed) { // 連続エラーの場合は初回のみログ出力
+            Serial.println("カメラフレームの取得に失敗しました");
+            last_fb_get_failed = true;
+          }
           // カメラが停止している場合は、エラーメッセージを繰り返さないようにする
-          if (esp_camera_sensor_get() != NULL) { // esp_camera_is_connected() の代わりにこれを使用
+          if (esp_camera_sensor_get() != NULL) {
             vTaskDelay(1000 / portTICK_PERIOD_MS); // エラー時の待機
           } else {
             vTaskDelay(100 / portTICK_PERIOD_MS); // カメラ停止中の短い待機
           }
           continue;
         }
+        last_fb_get_failed = false; // 成功したらフラグをリセット
 
         // JPEG形式の場合のみ送信
         if (fb->format == PIXFORMAT_JPEG) {
