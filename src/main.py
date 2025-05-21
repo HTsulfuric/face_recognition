@@ -330,16 +330,25 @@ def on_message(ws_app, message):
     if isinstance(message, bytes):
         # フレームをバイナリ (JPEG) で受信 → NumPy配列へ
         # JPEGとしてデコード
-        np_arr = np.frombuffer(message, np.uint8)
-        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        if frame is not None:
-            frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        original_color_frame = cv2.imdecode(np.frombuffer(message, np.uint8), cv2.IMREAD_COLOR)
+        if original_color_frame is not None:
+            original_color_frame = cv2.rotate(original_color_frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
             
-            # 顔認識処理と描画
-            processed_frame_with_faces = recognize_faces_and_draw(frame.copy()) # 描画済みのカラーフレームを取得
+            # 顔認識処理はグレースケールで行い、検出結果の座標と名前を取得
+            face_results = process_faces_and_get_coords(original_color_frame.copy()) # コピーを渡す
+
+            # 元のカラーフレームに検出結果を描画
+            frame_with_drawings = original_color_frame.copy()
+            for (top, right, bottom, left), name in face_results:
+                if name == "Unknown":
+                    color = (0, 0, 255) # 赤
+                else:
+                    color = (0, 255, 0) # 緑
+                cv2.rectangle(frame_with_drawings, (left, top), (right, bottom), color, 1)
+                cv2.putText(frame_with_drawings, name, (left + 6, bottom + 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, color, 1)
 
             with frame_lock:
-                latest_frame = processed_frame_with_faces # 描画済みのカラーフレームをlatest_frameに設定
+                latest_frame = frame_with_drawings # 描画済みのカラーフレームをlatest_frameに設定
             
             frame_count += 1
             elapsed_time = time.time() - start_time
@@ -351,22 +360,17 @@ def on_message(ws_app, message):
 
     elif isinstance(message, str):
         if message.startswith("from_esp32:"):
-            # log_message(message)
             logger.info(message)
     else:
-        # log_message(f"Unknown message type: {type(message)}")
         logger.warning(f"Unknown message type: {type(message)}")
 
 def on_error(ws_app, error):
-    # log_message(f"WebSocketエラー: {error}")
     logger.error(f"WebSocketエラー: {error}")
 
 def on_close(ws_app, close_status_code, close_msg):
-    # log_message("WebSocket接続が切断されました。再接続を試みます。")
     logger.warning("WebSocket接続が切断されました。再接続を試みます。")
 
 def on_open(ws_app):
-    # log_message("WebSocketに接続しました。")
     logger.info("WebSocketに接続しました。")
 
 # -----------------------------------------------------------------------------
@@ -388,10 +392,8 @@ def start_websocket():
             )
             websocket_client.connect()
             threading.Thread(target=websocket_client.run, daemon=True).start()
-            # log_message("WebSocketクライアントを開始しました。")
             logger.info("WebSocketクライアントを開始しました。")
         else:
-            # log_message("WebSocketクライアントは既に起動しています。")
             logger.info("WebSocketクライアントは既に起動しています。")
 
 # -----------------------------------------------------------------------------
@@ -401,7 +403,6 @@ def send_command(command):
     if websocket_client:
         websocket_client.send(command)
     else:
-        # log_message("WebSocketクライアントが初期化されていません。")
         logger.error("WebSocketクライアントが初期化されていません。")
 
 # -----------------------------------------------------------------------------
@@ -575,16 +576,17 @@ def preprocess_frame(frame):
     return gamma_corrected
 
 
-def recognize_faces_and_draw(frame_to_draw):
+def process_faces_and_get_coords(frame_for_processing):
     global unknown_face_times
-
+    
     # 顔認識はグレースケールで行うため、フレームをグレースケールに変換
-    gray_frame = cv2.cvtColor(frame_to_draw, cv2.COLOR_BGR2GRAY)
+    gray_frame = cv2.cvtColor(frame_for_processing, cv2.COLOR_BGR2GRAY)
     
     # 前処理を適用
     processed_frame = preprocess_frame(gray_frame)
 
     current_detected_names = set()
+    face_detection_results = [] # 検出された顔の座標と名前を格納するリスト
 
     # face_recognitionはカラー画像を期待するため、グレースケールをBGRに変換
     color_for_dlib = cv2.cvtColor(processed_frame, cv2.COLOR_GRAY2BGR)
@@ -613,15 +615,8 @@ def recognize_faces_and_draw(frame_to_draw):
                 # 保存は元のカラーフレームのグレースケール版で行う
                 save_unknown_face(gray_frame, (top, right, bottom, left))
                 unknown_face_times.append(current_time)
-
-            # 描画は元のカラーフレームに行う
-            cv2.rectangle(frame_to_draw, (left, top), (right, bottom), (0, 0, 255), 1)  # 赤枠
-            cv2.putText(frame_to_draw, name, (left + 6, bottom + 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255), 1)  # 赤文字
         else:
             logger.info(f"顔を検出しました: {name}")
-            # 描画は元のカラーフレームに行う
-            cv2.rectangle(frame_to_draw, (left, top), (right, bottom), (0, 255, 0), 1) # 緑枠
-            cv2.putText(frame_to_draw, name, (left + 6, bottom + 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 0), 1)  # 緑文字
 
             if name in detected_counts:
                 detected_counts[name] += 1
@@ -633,12 +628,14 @@ def recognize_faces_and_draw(frame_to_draw):
             #     send_line_notify(f"{name} さんが {detected_counts[name]} 回連続で検出されました。")
             #     notified_names.add(name)
 
+        face_detection_results.append(((top, right, bottom, left), name))
+
     # 未検出の名前をリセット
     for name in detected_counts.keys():
         if name not in current_detected_names:
             detected_counts[name] = 0
     
-    return frame_to_draw # 描画済みのカラーフレームを返す
+    return face_detection_results # 検出された顔の座標と名前のリストを返す
 
 
 def save_unknown_face(frame, face_coords):
@@ -648,7 +645,6 @@ def save_unknown_face(frame, face_coords):
     path = os.path.join(Config.FACES_DIR, filename)
     # グレースケール画像を保存する場合、cv2.imwriteはそのまま保存できる
     cv2.imwrite(path, frame)  # フレーム全体を保存
-    # log_message(f"未知の顔を保存しました: {filename}")
     logger.info(f"未知の顔を保存しました: {filename}")
 
 
