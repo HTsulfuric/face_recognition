@@ -7,6 +7,9 @@
 
 #include "camera_pins.h" // Ensure this header defines the camera pin configuration
 
+// init_camera関数を外部から呼び出せるように宣言
+extern bool init_camera();
+
 AsyncWebServer server(80);
 AsyncWebSocket ws("/stream");
 
@@ -94,6 +97,9 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
     if (currentClient == client) {
       currentClient = nullptr;
       isStreaming = false;
+      // クライアント切断時にカメラを停止
+      esp_camera_deinit();
+      Serial.println("クライアント切断によりカメラを停止しました。");
     }
     break;
 
@@ -119,6 +125,18 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
         set_resolution(res);
       } else if (msg == "start_stream") {
         if (!isStreaming) {
+          // カメラが停止している場合は再初期化
+          if (!esp_camera_is_connected()) {
+            Serial.println("カメラが停止しているため再初期化します。");
+            if (!init_camera()) {
+              Serial.println("カメラの再初期化に失敗しました。");
+              // エラー処理
+              if (client->canSend()) {
+                client->text("from_esp32: camera_reinit_failed");
+              }
+              return;
+            }
+          }
           isStreaming = true;
           Serial.println("ストリーミングを開始します");
         }
@@ -133,6 +151,9 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
           esp_camera_fb_return(fb);
           Serial.println("保持中のフレームバッファを解放しました。");
         }
+        // ストリーム停止時にカメラを停止
+        esp_camera_deinit();
+        Serial.println("ストリーム停止によりカメラを停止しました。");
       }
     }
     break;
@@ -163,7 +184,12 @@ void streamTask(void *parameter) {
         camera_fb_t *fb = esp_camera_fb_get();
         if (!fb) {
           Serial.println("カメラフレームの取得に失敗しました");
-          vTaskDelay(1000 / portTICK_PERIOD_MS);
+          // カメラが停止している場合は、エラーメッセージを繰り返さないようにする
+          if (esp_camera_is_connected()) {
+            vTaskDelay(1000 / portTICK_PERIOD_MS); // エラー時の待機
+          } else {
+            vTaskDelay(100 / portTICK_PERIOD_MS); // カメラ停止中の短い待機
+          }
           continue;
         }
 
@@ -174,6 +200,10 @@ void streamTask(void *parameter) {
 
         esp_camera_fb_return(fb);
       }
+    }
+    // ストリーミング中でない場合やクライアントがいない場合は、CPUを解放するために待機
+    else {
+      vTaskDelay(100 / portTICK_PERIOD_MS); // 長めの待機
     }
     // 他のタスクが稼働できるように軽い遅延
     vTaskDelay(10 / portTICK_PERIOD_MS);
