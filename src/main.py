@@ -310,10 +310,10 @@ def on_message(ws_app, message):
         # フレームをバイナリ (JPEG) で受信 → NumPy配列へ
         # JPEGとしてデコード
         np_arr = np.frombuffer(message, np.uint8)
-        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR) # IMREAD_COLOR に戻す
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if frame is not None:
             # グレースケールに変換（顔認識のために必要）
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) # BGRからGRAYに変換
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
             with frame_lock:
                 latest_frame = frame
@@ -573,10 +573,12 @@ def recognize_faces(frame):
 
     current_detected_names = set()
 
-    # face_recognitionはグレースケール画像も処理できるため、BGR2RGB変換は不要
-    # rgb_frame = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB) # この行は削除またはコメントアウト
-    face_locations = face_recognition.face_locations(processed_frame, model="cnn") # processed_frameを直接渡す
-    face_encodings = face_recognition.face_encodings(processed_frame, face_locations) # processed_frameを直接渡す
+    # face_recognitionはカラー画像を期待するため、グレースケールをBGRに変換
+    # processed_frameはグレースケールなので、3チャンネルに変換
+    color_for_dlib = cv2.cvtColor(processed_frame, cv2.COLOR_GRAY2BGR)
+
+    face_locations = face_recognition.face_locations(color_for_dlib, model="cnn") # color_for_dlib を渡す
+    face_encodings = face_recognition.face_encodings(color_for_dlib, face_locations) # color_for_dlib を渡す
 
     for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
         matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=Config.FACE_MATCH_THRESHOLD)
