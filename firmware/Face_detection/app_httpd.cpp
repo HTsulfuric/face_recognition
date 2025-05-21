@@ -190,9 +190,10 @@ void streamTask(void * parameter){
                     continue;
                 }
 
-                if(fb->format == PIXFORMAT_JPEG){
-                    currentClient->binary(fb->buf, fb->len);  // 既存のクライアントに送信
-                }
+                // PIXFORMAT_JPEG または PIXFORMAT_GRAYSCALE の場合でも送信
+                // グレースケールの場合もバイナリデータとして送信
+                currentClient->binary(fb->buf, fb->len);
+                
                 esp_camera_fb_return(fb);
             }
         }
