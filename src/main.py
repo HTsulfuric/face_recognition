@@ -502,9 +502,9 @@ def update_image():
             new_h = int(h * scale)
             resized_frame = cv2.resize(frame, (new_w, new_h))
 
-            # latest_frameは既にカラー画像なので、そのままImage.fromarrayに渡す
-            rgb_frame = Image.fromarray(resized_frame).convert('RGB')
-            imgtk = ImageTk.PhotoImage(image=rgb_frame)
+            # OpenCVのBGR画像をPILのRGBに変換
+            rgb_frame_for_pil = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
+            imgtk = ImageTk.PhotoImage(image=Image.fromarray(rgb_frame_for_pil))
 
             # 画像をラベルに設定
             root.image_label.imgtk = imgtk  # 保持するための参照
