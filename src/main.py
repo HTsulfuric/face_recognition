@@ -29,6 +29,7 @@ class AppConfig:
     DEFAULT_FPS_SETTING = "1"
     DEFAULT_RESOLUTION = "160x120"
     RESOLUTION_RESEND_INTERVAL_SEC = 5
+    SAVE_UNKNOWN_FACES = os.getenv("SAVE_UNKNOWN_FACES", "True").lower() == "true" # 未知の顔を保存するかどうかの設定
 
 class WebSocketClient:
     """WebSocket接続を管理するシングルトンクラス"""
@@ -167,12 +168,13 @@ class App:
         # GUI要素
         self.image_label = None
         self.fps_label = None
-        self.websocket_status_label = None
+        # self.websocket_status_label = None # WebSocketステータス表示を削除
         self.start_button = None
         self.stop_button = None
         self.log_text = None
         self.fps_var = tk.StringVar(value=AppConfig.DEFAULT_FPS_SETTING)
         self.resolution_var = tk.StringVar(value=AppConfig.DEFAULT_RESOLUTION)
+        self.save_unknown_faces_var = tk.BooleanVar(value=AppConfig.SAVE_UNKNOWN_FACES) # 未知の顔保存トグルスイッチ
 
         # 状態変数
         self.is_running = False
@@ -266,8 +268,8 @@ class App:
         self.fps_label = ttk.Label(status_frame, text="現在のFPS: 0.00", font=("Helvetica", 12))
         self.fps_label.pack(anchor=tk.W, pady=2)
 
-        self.websocket_status_label = ttk.Label(status_frame, text="接続状態: 未接続", font=("Helvetica", 12), foreground="grey")
-        self.websocket_status_label.pack(anchor=tk.W, pady=2)
+        # self.websocket_status_label = ttk.Label(status_frame, text="接続状態: 未接続", font=("Helvetica", 12), foreground="grey")
+        # self.websocket_status_label.pack(anchor=tk.W, pady=2)
 
         action_buttons_frame = ttk.LabelFrame(control_panel_frame, text="操作", padding="10")
         action_buttons_frame.pack(fill=tk.X, pady=(0, 10))
@@ -306,6 +308,13 @@ class App:
         for label, res_val in resolution_options:
             rb = ttk.Radiobutton(resolution_setting_frame, text=label, variable=self.resolution_var, value=res_val, command=lambda r=res_val: self._set_resolution(r))
             rb.pack(anchor=tk.W, pady=2)
+
+        # 未知の顔保存トグルスイッチ
+        save_unknown_frame = ttk.LabelFrame(control_panel_frame, text="設定", padding="10")
+        save_unknown_frame.pack(fill=tk.X, pady=(0, 10))
+        self.save_unknown_faces_check = ttk.Checkbutton(save_unknown_frame, text="未知の顔を保存", variable=self.save_unknown_faces_var)
+        self.save_unknown_faces_check.pack(anchor=tk.W, pady=2)
+
 
         log_frame = ttk.LabelFrame(control_panel_frame, text="ログ", padding="10")
         log_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 0))
@@ -422,19 +431,19 @@ class App:
     def _on_websocket_error(self, ws_app, error):
         """WebSocketエラー発生時の処理"""
         self.logger.error(f"App WebSocketエラー: {error}")
-        self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: エラー", foreground="red"))
+        # self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: エラー", foreground="red")) # WebSocketステータス表示を削除
         self.root.after(0, self._update_button_states)
 
     def _on_websocket_close(self, ws_app, close_status_code, close_msg):
         """WebSocket接続切断時の処理"""
         self.logger.warning(f"App WebSocket接続が切断されました。コード: {close_status_code}, メッセージ: {close_msg}")
-        self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: 切断", foreground="red"))
+        # self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: 切断", foreground="red")) # WebSocketステータス表示を削除
         self.root.after(0, self._update_button_states)
 
     def _on_websocket_open(self, ws_app):
         """WebSocket接続確立時の処理"""
         self.logger.info("App WebSocket接続が確立しました (on_app_open)。")
-        self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: 接続済み", foreground="green"))
+        # self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: 接続済み", foreground="green")) # WebSocketステータス表示を削除
         
         if self.send_stream_command_on_open:
             self.logger.info("接続確立のため、start_streamコマンドを送信します。")
@@ -469,7 +478,7 @@ class App:
                 self.logger.info("WebSocketクライアントが接続済みです。")
                 self.send_command("start_stream")
                 self.send_stream_command_on_open = False
-                self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: 接続済み", foreground="green"))
+                # self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: 接続済み", foreground="green")) # WebSocketステータス表示を削除
             else:
                 self.send_stream_command_on_open = True
                 self.websocket_client.connect()
@@ -488,7 +497,7 @@ class App:
             self.send_stream_command_on_open = False
             self.send_command("stop_stream")
             
-            self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: ストリーム停止中", foreground="blue"))
+            # self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: ストリーム停止中", foreground="blue")) # WebSocketステータス表示を削除
         else:
             self.logger.info("プロセスは既に停止しています。")
 
@@ -630,11 +639,14 @@ class App:
 
             current_time = time.time()
             if name == "Unknown":
-                # 過去1分間の未知の顔の記録をクリーンアップ
-                self.unknown_face_times = [t for t in self.unknown_face_times if t > current_time - 60]
-                if len(self.unknown_face_times) < 10: # max_unknown_faces_per_minute
-                    self._save_unknown_face(gray_frame, (top, right, bottom, left))
-                    self.unknown_face_times.append(current_time)
+                if self.save_unknown_faces_var.get(): # トグルスイッチの状態を確認
+                    # 過去1分間の未知の顔の記録をクリーンアップ
+                    self.unknown_face_times = [t for t in self.unknown_face_times if t > current_time - 60]
+                    if len(self.unknown_face_times) < 10: # max_unknown_faces_per_minute
+                        self._save_unknown_face(gray_frame, (top, right, bottom, left))
+                        self.unknown_face_times.append(current_time)
+                else:
+                    self.logger.debug("未知の顔の保存は無効になっています。")
             else:
                 self.logger.info(f"顔を検出しました: {name}")
 
