@@ -46,7 +46,7 @@ cd face_detection
 2. 仮想環境の作成と有効化:
 ```bash
 python -m venv myenv
-source myenv/bin/activate  # Linuxの場合
+source myenv/bin/activate  # Linux/macOSの場合
 # または
 myenv\Scripts\activate  # Windowsの場合
 ```
@@ -74,7 +74,7 @@ FACE_MATCH_THRESHOLD=0.5
 
 2. Pythonアプリケーションの起動:
 ```bash
-python src/facedetect.py
+python src/main.py
 ```
 
 3. GUIの操作:
@@ -116,7 +116,7 @@ python src/facedetect.py
 ```
 face_detection/
 ├── src/                    # ソースコード
-│   ├── facedetect.py      # メインプログラム
+│   ├── main.py             # メインプログラム
 │   └── logging_handlers.py # ログハンドラー
 ├── firmware/              # ESP32-CAMファームウェア
 │   ├── Face_detection.ino # メインスケッチ
