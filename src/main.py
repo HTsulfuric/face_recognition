@@ -109,6 +109,10 @@ last_send_time = 0 #
 
 send_stream_command_on_open = False # 接続確立後にストリーム開始コマンドを送るためのフラグ
 
+# 解像度再送信のための変数
+last_resolution_resend_time = 0
+RESOLUTION_RESEND_INTERVAL = 5 # 秒
+
 def on_resize(event):
     global video_canvas_width, video_canvas_height
     # ウィンドウのサイズに合わせて、動画表示領域の幅・高さを更新
@@ -186,8 +190,10 @@ class WebSocketClient:
                     logger.info("以前の接続はあったが、現在未接続のため再接続を試みます。")
                 if self.thread and self.thread.is_alive():
                     try:
+                        self.stop_event.set() # スレッドに停止を通知
                         self.ws.close()
                         self.thread.join(timeout=2.0)
+                        self.stop_event.clear() # 次の接続のためにクリア
                     except Exception as e:
                         if logger:
                             logger.error(f"既存WebSocketスレッドの終了待機中にエラー: {e}")
@@ -227,8 +233,8 @@ class WebSocketClient:
 
     def close(self):
         global logger
-        self.stop_event.set()
-        self.is_connected = False
+        self.stop_event.set() # スレッドに停止を通知
+        self.is_connected = False # 接続状態をFalseに設定
         if self.ws:
             self.ws.close() #
             if logger:
@@ -364,7 +370,7 @@ def setup_gui():
 # -----------------------------------------------------------------------------
 # WebSocketのイベントハンドラ (アプリケーションレベル)
 def on_app_message(ws_app, message): # 名前を変更して WebSocketClient と区別
-    global latest_frame, frame_count, start_time, current_fps, logger, root, fps_var, resolution_var
+    global latest_frame, frame_count, start_time, current_fps, logger, root, fps_var, resolution_var, last_resolution_resend_time
 
     if isinstance(message, bytes):
         original_color_frame = cv2.imdecode(np.frombuffer(message, np.uint8), cv2.IMREAD_COLOR) #
@@ -483,6 +489,7 @@ def start_websocket():
             if logger: logger.info("WebSocketクライアント接続処理を開始/再開しました。")
         else:
             if logger: logger.info("WebSocketクライアントは既に接続済みです。")
+            # 既に接続済みの場合は、GUIのステータスも「接続済み」に更新
             if websocket_status_label and root:
                 root.after(0, lambda: websocket_status_label.config(text="接続状態: 接続済み", foreground="green"))
 
@@ -509,6 +516,9 @@ def start_process():
             if logger: logger.info("WebSocketクライアントが接続済みです。")
             send_command("start_stream")
             send_stream_command_on_open = False
+            # 既に接続済みの場合もステータスを明示的に更新
+            if websocket_status_label and root:
+                root.after(0, lambda: websocket_status_label.config(text="接続状態: 接続済み", foreground="green"))
         else:
             send_stream_command_on_open = True
             start_websocket() 
@@ -526,12 +536,11 @@ def stop_process():
         send_stream_command_on_open = False
         send_command("stop_stream") #
         
-        if websocket_client and websocket_client.is_connected:
-            if websocket_status_label and root:
-                root.after(0, lambda: websocket_status_label.config(text="接続状態: 停止処理中...", foreground="orange"))
-        else:
-            if websocket_status_label and root:
-                 root.after(0, lambda: websocket_status_label.config(text="接続状態: 未接続", foreground="grey"))
+        # WebSocket接続は閉じないため、ステータスは「停止処理中」ではなく「接続済み」のままか、
+        # あるいはストリーム停止中を示す状態にする
+        if websocket_status_label and root:
+            # ストリーム停止中だが接続は維持されている状態を示す
+            root.after(0, lambda: websocket_status_label.config(text="接続状態: ストリーム停止中", foreground="blue"))
     else:
         if logger: logger.info("プロセスは既に停止しています。") #
 
@@ -764,7 +773,6 @@ def safe_exit():
         if logger: logger.info("WebSocketマネージャスレッドの終了を試みます。")
         # websocket_client は既に None の可能性があるので、stop_event を直接操作できない。
         # WebSocketClient.close() の中で stop_event.set() が呼ばれることを期待する。
-        # または、websocket_client インスタンスが None になる前に stop_event をセットする。
         # ここでは、websocket_client.close() に任せる。
         websocket_manager_thread.join(timeout=2.0)
         if websocket_manager_thread.is_alive():
@@ -784,9 +792,6 @@ def start():
     # ログ設定の初期化 (setup_guiより前に移動して、早期にロガーを使えるようにする)
     # ただし、tkinterHandlerはlog_textウィジェットが必要なので、setup_gui後でないと完全には設定できない。
     # ここでは基本的なロガーを設定し、tkinterHandlerはsetup_gui内で追加する形にする。
-    # logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s:%(lineno)s %(funcName)s [%(levelname)s]: %(message)s')
-    # logger = getLogger(__name__)
-    # 上記のbasicConfigの代わりに、log_config.jsonを早期に読み込むが、tkinterHandlerは別途処理。
 
     # loggerの初期化をここで行い、setup_gui内でtkinterHandlerを追加する
     with open('log_config.json', 'r', encoding='utf-8') as f:
