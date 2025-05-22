@@ -168,7 +168,6 @@ class App:
         # GUI要素
         self.image_label = None
         self.fps_label = None
-        # self.websocket_status_label = None # WebSocketステータス表示を削除
         self.start_button = None
         self.stop_button = None
         self.log_text = None
@@ -189,7 +188,7 @@ class App:
         self.last_resolution_resend_time = 0
         self.unknown_face_times = []
         self.detected_counts = {}
-        # self.notified_names = set() # LINE Notifyをコメントアウト
+        # self.notified_names = set() 
 
         # キュー
         self.log_queue = queue.Queue()
@@ -268,8 +267,6 @@ class App:
         self.fps_label = ttk.Label(status_frame, text="現在のFPS: 0.00", font=("Helvetica", 12))
         self.fps_label.pack(anchor=tk.W, pady=2)
 
-        # self.websocket_status_label = ttk.Label(status_frame, text="接続状態: 未接続", font=("Helvetica", 12), foreground="grey")
-        # self.websocket_status_label.pack(anchor=tk.W, pady=2)
 
         action_buttons_frame = ttk.LabelFrame(control_panel_frame, text="操作", padding="10")
         action_buttons_frame.pack(fill=tk.X, pady=(0, 10))
@@ -431,19 +428,16 @@ class App:
     def _on_websocket_error(self, ws_app, error):
         """WebSocketエラー発生時の処理"""
         self.logger.error(f"App WebSocketエラー: {error}")
-        # self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: エラー", foreground="red")) # WebSocketステータス表示を削除
         self.root.after(0, self._update_button_states)
 
     def _on_websocket_close(self, ws_app, close_status_code, close_msg):
         """WebSocket接続切断時の処理"""
         self.logger.warning(f"App WebSocket接続が切断されました。コード: {close_status_code}, メッセージ: {close_msg}")
-        # self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: 切断", foreground="red")) # WebSocketステータス表示を削除
         self.root.after(0, self._update_button_states)
 
     def _on_websocket_open(self, ws_app):
         """WebSocket接続確立時の処理"""
         self.logger.info("App WebSocket接続が確立しました (on_app_open)。")
-        # self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: 接続済み", foreground="green")) # WebSocketステータス表示を削除
         
         if self.send_stream_command_on_open:
             self.logger.info("接続確立のため、start_streamコマンドを送信します。")
@@ -478,7 +472,6 @@ class App:
                 self.logger.info("WebSocketクライアントが接続済みです。")
                 self.send_command("start_stream")
                 self.send_stream_command_on_open = False
-                # self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: 接続済み", foreground="green")) # WebSocketステータス表示を削除
             else:
                 self.send_stream_command_on_open = True
                 self.websocket_client.connect()
@@ -497,7 +490,6 @@ class App:
             self.send_stream_command_on_open = False
             self.send_command("stop_stream")
             
-            # self.root.after(0, lambda: self.websocket_status_label.config(text="接続状態: ストリーム停止中", foreground="blue")) # WebSocketステータス表示を削除
         else:
             self.logger.info("プロセスは既に停止しています。")
 
