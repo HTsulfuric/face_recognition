@@ -9,8 +9,8 @@ void startCameraServer();
 // init_camera関数を外部（app_httpd.cpp）から呼び出せるようにプロトタイプ宣言
 bool init_camera();
 
-const char SSID[] = "Your_SSID";  // WiFiのSSID
-const char password[] = "Your_Password";  // WiFiのパスワード
+const char SSID[] = "ist_members";  // WiFiのSSID
+const char password[] = "8gAp3nY!s2Gm";  // WiFiのパスワード
 
 // 最大再試行回数
 #define MAX_WIFI_RETRIES 20

@@ -220,6 +220,10 @@ void streamTask(void *parameter) {
             Serial.println("カメラフレームの取得に失敗しました (esp_camera_fb_get)");
             last_fb_get_failed = true;
           }
+          if (currentClient != nullptr && currentClient->canSend()) {
+            currentClient->text("error:frame_capture_failed"); // エラーメッセージを送信
+            Serial.println("クライアントに'error:frame_capture_failed'を送信しました。");
+          }
           // カメラが停止している場合は、エラーメッセージを繰り返さないようにする
           if (esp_camera_sensor_get() != NULL) { // カメラが初期化されている場合のみ待機
             vTaskDelay(100 / portTICK_PERIOD_MS); // エラー時の待機

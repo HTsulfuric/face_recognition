@@ -6,3 +6,4 @@ venv/
 .vscode/
 .aider*
 app.log
+Face_detection.ino
