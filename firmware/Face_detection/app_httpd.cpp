@@ -11,77 +11,54 @@
 extern bool init_camera();
 extern bool initialize_camera(); // initialize_cameraも外部から呼び出せるように宣言
 
-// 定数定義
-const int DEFAULT_FPS = 1;
-const int MIN_FPS = 1;
-const int MAX_FPS = 30;
-const int MIN_JPEG_QUALITY = 10;
-const int MAX_JPEG_QUALITY = 100;
-const int STREAM_TASK_STACK_SIZE = 16384; // ストリームタスクのスタックサイズ
-const int WS_RETRY_DELAY_MS = 100; // WebSocketエラー時の待機時間
-const int CAMERA_DEINIT_MAX_RETRIES = 5; // カメラデアセンブルの最大再試行回数
-const int CAMERA_DEINIT_RETRY_DELAY_MS = 50; // カメラデアセンブルの再試行間隔
-
-// 解像度文字列とFRAMESIZEのマップ
-struct ResolutionMap {
-    const char* name;
-    framesize_t size;
-};
-
-const ResolutionMap RESOLUTION_MAP[] = {
-    {"160x120", FRAMESIZE_QQVGA},
-    {"176x144", FRAMESIZE_QCIF},
-    {"240x176", FRAMESIZE_HQVGA},
-    {"240x240", FRAMESIZE_240X240},
-    {"320x240", FRAMESIZE_QVGA}
-};
-const size_t RESOLUTION_MAP_SIZE = sizeof(RESOLUTION_MAP) / sizeof(RESOLUTION_MAP[0]);
-
-
 AsyncWebServer server(80);
 AsyncWebSocket ws("/stream");
 
 AsyncWebSocketClient *currentClient = nullptr;
 
-// FPS設定
-int current_fps = DEFAULT_FPS;
+// FPS設定（デフォルト1FPS）
+int current_fps = 1;
 unsigned long frame_interval_ms = 1000 / current_fps;
 
 bool isStreaming = false;
 
-// 解像度設定
-String current_resolution_str = "160x120"; // 変更後
+// 解像度設定（デフォルトは160*120）
+String current_resolution = "160x120"; // 変更後
 
 // 解像度を設定する関数
-void set_resolution(const String &res_str) {
-  current_resolution_str = res_str;
-  Serial.printf("解像度が %s に設定されました。\n", current_resolution_str.c_str());
+void set_resolution(const String &res) {
+  current_resolution = res;
+  Serial.printf("解像度が %s に設定されました。\n", current_resolution.c_str());
 
   sensor_t *s = esp_camera_sensor_get();
   if (s != NULL) {
-    framesize_t target_framesize = FRAMESIZE_INVALID;
-    for (size_t i = 0; i < RESOLUTION_MAP_SIZE; ++i) {
-        if (res_str == RESOLUTION_MAP[i].name) {
-            target_framesize = RESOLUTION_MAP[i].size;
-            break;
-        }
-    }
-
-    if (target_framesize != FRAMESIZE_INVALID) {
-        s->set_framesize(s, target_framesize);
-        Serial.printf("解像度を %s に設定しました。\n", res_str.c_str());
+    if (current_resolution == "160x120") {
+      s->set_framesize(s, FRAMESIZE_QQVGA); // 160x120
+      Serial.println("解像度を 160x120 に設定しました。");
+    } else if (current_resolution == "176x144") {
+      s->set_framesize(s, FRAMESIZE_QCIF); // 176x144
+      Serial.println("解像度を 176x144 に設定しました。");
+    } else if (current_resolution == "240x176") {
+      s->set_framesize(s, FRAMESIZE_HQVGA); // 240x160
+      Serial.println("解像度を 240x160 に設定しました。");
+    } else if (current_resolution == "240x240") {
+      s->set_framesize(s, FRAMESIZE_240X240); // 240x240
+      Serial.println("解像度を 240x240 に設定しました。");
+    } else if (current_resolution == "320x240") { // QVGAを追加
+      s->set_framesize(s, FRAMESIZE_QVGA); // 320x240
+      Serial.println("解像度を 320x240 に設定しました。");
     } else {
-        Serial.printf("未対応の解像度が指定されました: %s\n", res_str.c_str());
+      Serial.println("未対応の解像度が指定されました。");
     }
   }
 }
 
 // JPEG画質を設定する関数
 void set_jpeg_quality(int quality) {
-  if (quality < MIN_JPEG_QUALITY)
-    quality = MIN_JPEG_QUALITY;
-  if (quality > MAX_JPEG_QUALITY)
-    quality = MAX_JPEG_QUALITY;
+  if (quality < 10)
+    quality = 10;
+  if (quality > 100)
+    quality = 100;
   sensor_t *s = esp_camera_sensor_get();
   if (s != NULL) {
     s->set_quality(s, quality);
@@ -90,12 +67,10 @@ void set_jpeg_quality(int quality) {
 }
 
 void set_fps(int fps) {
-  if (fps >= MIN_FPS && fps <= MAX_FPS) {
+  if (fps > 0 && fps <= 30) {
     current_fps = fps;
     frame_interval_ms = 1000 / current_fps;
     Serial.printf("FPSが %d に設定されました。\n", current_fps);
-  } else {
-    Serial.printf("無効なFPS値が指定されました: %d (許容範囲: %d-%d)\n", fps, MIN_FPS, MAX_FPS);
   }
 }
 
@@ -129,18 +104,20 @@ void stop_camera_and_free_fb() {
     // カメラのデアセンブルを試行（失敗したら再試行）
     esp_err_t deinit_err = ESP_OK;
     int retry_count = 0;
-    
+    const int MAX_DEINIT_RETRIES = 5; // 再試行回数を増やす
+    const int DEINIT_RETRY_DELAY_MS = 50; // 再試行間の遅延
+
     // カメラが初期化されている場合のみデアセンブルを試みる
     // esp_camera_sensor_get() が NULL でないことを確認
     if (esp_camera_sensor_get() != NULL) {
-        while (retry_count < CAMERA_DEINIT_MAX_RETRIES) {
+        while (retry_count < MAX_DEINIT_RETRIES) {
             deinit_err = esp_camera_deinit();
             if (deinit_err == ESP_OK) {
                 Serial.println("カメラを正常に停止しました。");
                 break;
             } else {
-                Serial.printf("カメラの停止に失敗しました。エラーコード: 0x%x (%s) - 再試行 %d/%d\n", deinit_err, esp_err_to_name(deinit_err), retry_count + 1, CAMERA_DEINIT_MAX_RETRIES);
-                vTaskDelay(CAMERA_DEINIT_RETRY_DELAY_MS / portTICK_PERIOD_MS);
+                Serial.printf("カメラの停止に失敗しました。エラーコード: 0x%x (%s) - 再試行 %d/%d\n", deinit_err, esp_err_to_name(deinit_err), retry_count + 1, MAX_DEINIT_RETRIES);
+                vTaskDelay(DEINIT_RETRY_DELAY_MS / portTICK_PERIOD_MS);
                 retry_count++;
             }
         }
@@ -174,7 +151,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
       client->text("from_esp32: client connected");
       // 現在のFPSと解像度を通知
       client->text("current_fps:" + String(current_fps));
-      client->text("current_resolution:" + current_resolution_str);
+      client->text("current_resolution:" + current_resolution);
     }
     break;
 
@@ -199,13 +176,13 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 
       // メッセージのパースと処理
       if (msg.startsWith("SET_FPS:")) {
-        int fps = msg.substring(strlen("SET_FPS:")).toInt();
+        int fps = msg.substring(8).toInt();
         set_fps(fps);
       } else if (msg.startsWith("SET_JPEG_QUALITY:")) {
-        int quality = msg.substring(strlen("SET_JPEG_QUALITY:")).toInt();
+        int quality = msg.substring(17).toInt();
         set_jpeg_quality(quality);
       } else if (msg.startsWith("SET_RESOLUTION:")) {
-        String res = msg.substring(strlen("SET_RESOLUTION:"));
+        String res = msg.substring(15);
         // 解像度設定の処理
         set_resolution(res);
       } else if (msg == "start_stream") {
@@ -277,9 +254,9 @@ void streamTask(void *parameter) {
           }
           // カメラが停止している場合は、エラーメッセージを繰り返さないようにする
           if (esp_camera_sensor_get() != NULL) { // カメラが初期化されている場合のみ待機
-            vTaskDelay(WS_RETRY_DELAY_MS / portTICK_PERIOD_MS); // エラー時の待機
+            vTaskDelay(100 / portTICK_PERIOD_MS); // エラー時の待機
           } else {
-            vTaskDelay(WS_RETRY_DELAY_MS / portTICK_PERIOD_MS); // カメラが初期化されていない場合の短い待機
+            vTaskDelay(100 / portTICK_PERIOD_MS); // カメラが初期化されていない場合の短い待機
           }
           continue;
         }
@@ -295,7 +272,7 @@ void streamTask(void *parameter) {
     }
     // ストリーミング中でない場合やクライアントがいない場合は、CPUを解放するために待機
     else {
-      vTaskDelay(WS_RETRY_DELAY_MS / portTICK_PERIOD_MS); // 長めの待機
+      vTaskDelay(100 / portTICK_PERIOD_MS); // 長めの待機
     }
     // 他のタスクが稼働できるように軽い遅延
     vTaskDelay(10 / portTICK_PERIOD_MS);
@@ -326,6 +303,6 @@ void startCameraServer() {
   Serial.println("HTTPサーバーを開始しました");
 
   // ストリームタスクの作成
-  xTaskCreatePinnedToCore(streamTask, "WebSocketStream", STREAM_TASK_STACK_SIZE, NULL, 1, NULL,
+  xTaskCreatePinnedToCore(streamTask, "WebSocketStream", 16384, NULL, 1, NULL,
                           1);
 }
