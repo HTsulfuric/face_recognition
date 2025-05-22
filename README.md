@@ -7,10 +7,11 @@
 - ESP32-CAMからのリアルタイム映像取得
 - 顔検出と認証
 - 未知の顔の検出と保存
-- LINE Notifyによる通知機能
 - カスタマイズ可能なFPS設定
 - 解像度調整機能
 - グラフィカルユーザーインターフェース（GUI）
+
+**注記: LINE Notifyによる通知機能は現在サポートを終了しています。**
 
 ## 必要条件
 
@@ -18,7 +19,6 @@
 - ESP32-CAM
 - Arduino IDE（ESP32-CAMのファームウェア開発用）
 - インターネット接続
-- LINE Notifyトークン（通知機能を使用する場合）
 
 ## インストール方法
 
@@ -61,7 +61,7 @@ pip install git+https://github.com/ageitgey/face_recognition_models
 プロジェクトのルートディレクトリに`.env`ファイルを作成し、以下の内容を設定:
 ```
 WS_URL=ws://[ESP32-CAMのIPアドレス]:8080
-LINE_NOTIFY_TOKEN=your_token_here
+# LINE_NOTIFY_TOKEN=your_token_here # LINE Notify機能は現在サポートされていません
 FACES_DIR=./resources/faces
 FACE_MATCH_THRESHOLD=0.5
 ```

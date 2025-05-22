@@ -11,7 +11,7 @@ from tkinter import ttk
 from PIL import Image, ImageTk
 import queue
 from datetime import datetime
-import requests
+# import requests # LINE Notifyをコメントアウトするため
 import logging
 from logging import getLogger, config
 from logging_handlers import TkinterHandler
@@ -23,7 +23,7 @@ load_dotenv()
 class AppConfig:
     """アプリケーションの設定を管理するクラス"""
     WS_URL = os.getenv("WS_URL", "ws://localhost:8080")
-    LINE_NOTIFY_TOKEN = os.getenv("LINE_NOTIFY_TOKEN", "")
+    # LINE_NOTIFY_TOKEN = os.getenv("LINE_NOTIFY_TOKEN", "") # LINE Notifyをコメントアウト
     FACES_DIR = os.getenv("FACES_DIR", "./resources/faces")
     FACE_MATCH_THRESHOLD = float(os.getenv("FACE_MATCH_THRESHOLD", 0.5))
     DEFAULT_FPS_SETTING = "1"
@@ -187,7 +187,7 @@ class App:
         self.last_resolution_resend_time = 0
         self.unknown_face_times = []
         self.detected_counts = {}
-        self.notified_names = set()
+        # self.notified_names = set() # LINE Notifyをコメントアウト
 
         # キュー
         self.log_queue = queue.Queue()
