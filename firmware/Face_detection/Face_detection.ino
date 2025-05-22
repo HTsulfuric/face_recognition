@@ -51,18 +51,21 @@ bool connect_wifi() {
 bool initialize_camera() {
   int retry_count = 0;
   while (retry_count < MAX_CAMERA_INIT_RETRIES) {
+    Serial.printf("カメラ初期化を試行中... (%d/%d)\n", retry_count + 1, MAX_CAMERA_INIT_RETRIES);
     if (init_camera()) {
       Serial.println("カメラが正常に初期化されました");
       return true;
     } else {
       Serial.println("カメラ初期化に失敗。再試行します...");
       retry_count++;
-      delay(CAMERA_INIT_DELAY);
+      if (retry_count < MAX_CAMERA_INIT_RETRIES) {
+        delay(CAMERA_INIT_DELAY);
+      }
     }
   }
-  Serial.println("カメラの初期化に複数回失敗しました。システムをリセットします。");
-  ESP.restart();  // システムリセット
-  return false;  // この行は通常実行されません
+  Serial.println("カメラの初期化に複数回失敗しました。");
+  // ここでESP.restart()を呼び出す代わりに、呼び出し元でエラーハンドリングできるようにfalseを返す
+  return false;
 }
 
 // カメラの初期化関数
