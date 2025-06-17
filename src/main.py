@@ -32,7 +32,7 @@ class AppConfig:
     SAVE_UNKNOWN_FACES = os.getenv("SAVE_UNKNOWN_FACES", "True").lower() == "true" # 未知の顔を保存するかどうかの設定
 
 class WebSocketClient:
-    """WebSocket接続を管理するシングルトンクラス"""
+    """WebSocket接続を管理するクラス"""
     _instance = None
     _lock = threading.Lock()
 
